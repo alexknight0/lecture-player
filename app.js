@@ -34,6 +34,11 @@ const DONE_WITHIN = 60;        // seconds from the end that count as watched
 const PUSH_DELAY = 15000;      // debounce for saving progress to Firestore
 const SPEEDS = [1, 1.25, 1.5, 1.75, 2];
 
+// Row icons (static strings, no user data).
+const ICON_PLAY = '<svg viewBox="0 0 24 24"><path d="M9 6.5v11l9-5.5z" fill="currentColor"/></svg>';
+const ICON_DONE = '<svg viewBox="0 0 24 24"><path d="m6.5 12.5 3.5 3.5 7.5-8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const ICON_WAIT = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 8.5V12l2.5 1.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+
 const app = initializeApp(FIREBASE_CONFIG);
 // Sign-in is kept in localStorage, not Firebase's default IndexedDB: all of Alex's sites share
 // one origin and so one sign-in database, and Firebase waits forever if another site's page
@@ -83,7 +88,7 @@ function fmtTime(s) {
 
 function fmtLength(s) {
   const m = Math.round(s / 60);
-  return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} min`;
+  return m >= 60 ? `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ""}` : `${m} min`;
 }
 
 function fmtDate(iso) {
@@ -174,6 +179,7 @@ function renderList() {
     return b;
   }));
   tabs.hidden = cs.length < 2;
+  $("course-name").textContent = videos.find((v) => v.course === course)?.courseName || "";
   const list = $("list");
   if (!videos.length) {
     list.replaceChildren(el("p", { class: "empty", textContent: "No videos uploaded yet. Run tools/get.py on the Mac to add some." }));
@@ -199,9 +205,11 @@ function renderList() {
     else if (p.done) meta.push(el("span", { class: "done-tag", textContent: "✓ Watched" }));
     else if (p.pos > 5) meta.push(el("span", { textContent: `${fmtTime(p.pos)} watched` }));
     const b = el("button", { type: "button", disabled: !ready },
-      el("span", { class: "row-title", textContent: title }),
-      el("span", { class: "row-meta" }, ...meta),
-      pct > 0 ? el("span", { class: "row-bar" }, el("i", { style: `width:${pct}%` })) : null);
+      el("span", { class: "row-icon", ariaHidden: "true", innerHTML: !ready ? ICON_WAIT : p.done ? ICON_DONE : ICON_PLAY }),
+      el("span", { class: "row-text" },
+        el("span", { class: "row-title", textContent: title }),
+        el("span", { class: "row-meta" }, ...meta),
+        pct > 0 && !p.done ? el("span", { class: "row-bar" }, el("i", { style: `width:${pct}%` })) : null));
     if (ready) b.onclick = () => { location.hash = `v=${encodeURIComponent(v.id)}`; };
     return el("li", { class: [p.done && ready ? "done" : "", ready ? "" : "missing"].join(" ").trim() }, b);
   };
