@@ -181,7 +181,9 @@ def section_lessons(b, course, sec):
             les = e.get("lesson") or {}
             info = les.get("lesson") or {}
             medias = [m for m in les.get("medias", []) if m.get("isAvailable") and m.get("mediaType") in ("Video", "Audio")]
-            if not info or les.get("isFuture") or les.get("isLive") or not medias:
+            # Some lessons are flagged isFuture although their video is already up (seen in
+            # ANAT1012), so only skip a lesson when nothing in it is available.
+            if not info or les.get("isLive") or not medias:
                 continue
             start = (info.get("timing") or {}).get("start", "")
             for n, media in enumerate(medias):
