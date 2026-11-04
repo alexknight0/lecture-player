@@ -41,6 +41,10 @@ class Store:
     def call(self, method, url, **kw):
         for attempt in range(5):
             r = requests.request(method, url, headers=self.headers(), timeout=120, **kw)
+            if r.status_code == 401 and attempt < 4:
+                # gcloud can hand out a token close to expiry; get a fresh one and retry.
+                self._token = None
+                continue
             if r.status_code in (429, 500, 502, 503, 504):
                 time.sleep(2 ** attempt)
                 continue
