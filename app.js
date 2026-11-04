@@ -356,6 +356,7 @@ function openVideo(v) {
   show("player-view");
   const title = v.kind === "recording" ? [v.title || `${v.course} lecture`, fmtDate(v.start || v.date)].filter(Boolean).join(" · ") : v.title;
   $("title").textContent = title;
+  $("fs-title").textContent = title;
   document.title = title;
   $("layout").hidden = v.layout !== "dual";
   setLayout(layout);
@@ -434,6 +435,10 @@ function updateSeek() {
   $("seek-buffered").style.width = `calc((100% - 18px) * ${Math.min(1, end / d)})`;
   $("time-now").textContent = fmtTime(seeking ? ($("seek").value / 1000) * d : t);
   $("play").classList.toggle("on", !video.paused);
+  $("fs-play").classList.toggle("on", !video.paused);
+  $("ov-play").classList.toggle("on", !video.paused);
+  $("ov-play").setAttribute("aria-label", video.paused ? "Play" : "Pause");
+  $("fs-play").setAttribute("aria-label", video.paused ? "Play" : "Pause");
   $("play").setAttribute("aria-label", video.paused ? "Play" : "Pause");
 }
 
@@ -464,10 +469,93 @@ function fullscreen() {
   const frame = $("frame");
   if (document.fullscreenElement || document.webkitFullscreenElement) {
     (document.exitFullscreen || document.webkitExitFullscreen).call(document);
-  } else if (frame.requestFullscreen) frame.requestFullscreen().catch(() => video.webkitEnterFullscreen?.());
-  else if (frame.webkitRequestFullscreen) frame.webkitRequestFullscreen();
-  else if (video.webkitEnterFullscreen) video.webkitEnterFullscreen(); // iPhone: shows the whole video
+  } else if (frame.requestFullscreen) {
+    frame.requestFullscreen({ navigationUI: "hide" }).then(lockLandscape, () => video.webkitEnterFullscreen?.());
+  } else if (frame.webkitRequestFullscreen) frame.webkitRequestFullscreen();
+  else if (video.webkitEnterFullscreen) video.webkitEnterFullscreen(); // iPhone: its own player, with its own controls
 }
+
+// Android: turn landscape videos sideways in full screen (not supported on iPad/desktop; ignored there).
+function lockLandscape() {
+  if (current && current.width > current.height) screen.orientation?.lock?.("landscape").catch(() => {});
+}
+
+function isFullscreen() {
+  return (document.fullscreenElement || document.webkitFullscreenElement) === $("frame");
+}
+
+function onFullscreenChange() {
+  const fs = isFullscreen();
+  $("frame").classList.toggle("fs", fs);
+  $("fullscreen").setAttribute("aria-label", fs ? "Exit full screen" : "Full screen");
+  $("fullscreen").title = fs ? "Exit full screen (f)" : "Full screen (f)";
+  if (!fs) screen.orientation?.unlock?.();
+  poke();
+}
+document.addEventListener("fullscreenchange", onFullscreenChange);
+document.addEventListener("webkitfullscreenchange", onFullscreenChange);
+
+// ---- Touch gestures on the video ----
+// Full screen with a finger: tap shows/hides the controls; double-tap the left or right side
+// skips 10 s, and further taps on that side keep adding 10 s (like YouTube). With a mouse, or
+// outside full screen, a click plays/pauses and a double-click toggles full screen.
+const TAP_WAIT = 260;   // ms to wait for a second tap
+const STREAK = 700;     // ms after a skip in which one more tap on the same side skips again
+let lastPointer = "mouse";
+let tapTimer = null;
+let lastTap = { t: 0, side: "" };
+let streak = { t: 0, side: "", total: 0 };
+
+function sideOf(e) {
+  const r = $("frame").getBoundingClientRect();
+  const x = (e.clientX - r.left) / r.width;
+  return x < 0.35 ? "left" : x > 0.65 ? "right" : "middle";
+}
+
+function flashSkip(side, total) {
+  const f = $(side === "left" ? "skip-left" : "skip-right");
+  f.querySelector("span").textContent = `${side === "left" ? "−" : "+"}${total} s`;
+  f.classList.add("on");
+  clearTimeout(f._t);
+  f._t = setTimeout(() => f.classList.remove("on"), 650);
+}
+
+function gestureSkip(side) {
+  const now = Date.now();
+  streak = now - streak.t < STREAK && streak.side === side ? { t: now, side, total: streak.total + 10 } : { t: now, side, total: 10 };
+  skip(side === "left" ? -10 : 10);
+  flashSkip(side, streak.total);
+}
+
+function toggleControls() {
+  const frame = $("frame");
+  if (frame.classList.contains("idle")) poke();
+  else { clearTimeout(idleTimer); frame.classList.add("idle"); }
+}
+
+function onVideoTap(e) {
+  if (!(lastPointer === "touch" && isFullscreen())) { togglePlay(); return; }
+  const side = sideOf(e);
+  const now = Date.now();
+  if (side !== "middle" && now - streak.t < STREAK && streak.side === side) {
+    gestureSkip(side);
+  } else if (side !== "middle" && tapTimer && now - lastTap.t < TAP_WAIT && lastTap.side === side) {
+    clearTimeout(tapTimer); tapTimer = null;
+    gestureSkip(side);
+  } else {
+    clearTimeout(tapTimer);
+    lastTap = { t: now, side };
+    tapTimer = setTimeout(() => { tapTimer = null; toggleControls(); }, side === "middle" ? 0 : TAP_WAIT);
+  }
+}
+
+video.addEventListener("pointerdown", (e) => { lastPointer = e.pointerType; }, { passive: true });
+video.addEventListener("dblclick", (e) => { if (lastPointer !== "touch") { e.preventDefault(); fullscreen(); } });
+
+$("fs-play").onclick = () => { togglePlay(); poke(); };
+$("ov-play").onclick = () => { togglePlay(); poke(); };
+$("fs-back").onclick = () => { skip(-10); poke(); };
+$("fs-fwd").onclick = () => { skip(10); poke(); };
 
 video.addEventListener("timeupdate", () => {
   updateSeek();
@@ -480,17 +568,24 @@ video.addEventListener("waiting", () => { $("spinner").hidden = false; });
 video.addEventListener("playing", () => { $("spinner").hidden = true; });
 video.addEventListener("seeked", () => { $("spinner").hidden = true; updateSeek(); });
 video.addEventListener("ended", () => { if (current) { Progress.set(current.id, { done: true, pos: current.duration }); updateMark(); Progress.flush(); } });
-video.addEventListener("click", togglePlay);
+video.addEventListener("click", onVideoTap);
 
-// Overlay seek bar: hide it 2.5 s after the last pointer/touch activity while playing.
+// Overlay controls: hide them 2.5 s after the last pointer activity while playing (3.5 s in full
+// screen). A finger on the video in full screen is handled by onVideoTap instead, so a tap can hide them.
 let idleTimer = null;
 function poke() {
   const frame = $("frame");
   frame.classList.remove("idle");
   clearTimeout(idleTimer);
-  idleTimer = setTimeout(() => { if (!video.paused && !seeking) frame.classList.add("idle"); }, 2500);
+  idleTimer = setTimeout(() => { if (!video.paused && !seeking) frame.classList.add("idle"); }, isFullscreen() ? 3500 : 2500);
 }
-for (const ev of ["pointermove", "pointerdown", "touchstart"]) $("frame").addEventListener(ev, poke, { passive: true });
+for (const ev of ["pointermove", "pointerdown"]) {
+  $("frame").addEventListener(ev, (e) => {
+    if (e.pointerType === "touch" && e.target === video && isFullscreen()) return;
+    if (e.pointerType === "touch" && ev === "pointermove") return;
+    poke();
+  }, { passive: true });
+}
 video.addEventListener("play", poke);
 video.addEventListener("pause", () => { clearTimeout(idleTimer); $("frame").classList.remove("idle"); });
 

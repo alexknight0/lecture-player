@@ -235,6 +235,66 @@ li.missing .row-title { color: var(--muted); font-weight: 500; }
 .seek-bar:hover .seek-played::after, .seek-bar:active .seek-played::after { transform: scale(1); }
 .seek input { position: absolute; inset: 0; width: 100%; margin: 0; opacity: 0; cursor: pointer; }
 
+/* ---- Full screen ---- */
+.frame { touch-action: manipulation; }
+.fs-top, .fs-mid { display: none; }
+.frame.fs { background: #000; }
+.frame.fs .fs-top {
+  display: flex; align-items: center; gap: 0.6rem; position: absolute; left: 0; right: 0; top: 0; z-index: 2;
+  padding: max(0.8rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) 2.5rem max(1rem, env(safe-area-inset-left));
+  background: linear-gradient(rgb(0 0 0 / 0.65), transparent); color: white; transition: opacity 0.25s;
+}
+.fs-title { flex: 1; min-width: 0; font-weight: 650; font-size: 1.05rem; text-shadow: 0 1px 3px rgb(0 0 0 / 0.6); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.frame.fs .fs-mid {
+  display: flex; align-items: center; justify-content: center; gap: clamp(2rem, 9vw, 6rem);
+  position: absolute; inset: 0; z-index: 1; pointer-events: none; transition: opacity 0.25s;
+}
+.fs-mid .fs-btn { pointer-events: auto; }
+.fs-btn {
+  border: none; color: white; background: rgb(0 0 0 / 0.38); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  display: inline-grid; place-items: center; padding: 0; border-radius: 50%; width: 2.9rem; height: 2.9rem;
+}
+.fs-btn svg { width: 1.5rem; height: 1.5rem; }
+/* Speed and full-screen buttons in the overlay bar, bottom right. */
+.ov-btn {
+  flex: none; border: none; background: none; color: white; padding: 0; width: 2.2rem; height: 2.2rem;
+  display: inline-grid; place-items: center; border-radius: 50%;
+}
+.ov-btn:hover:not(:disabled) { background: rgb(255 255 255 / 0.15); }
+.ov-btn svg { width: 1.3rem; height: 1.3rem; grid-area: 1 / 1; }
+.ov-pill { width: auto; min-width: 2.6rem; padding: 0 0.55rem; border-radius: 999px; font-weight: 700; font-size: 0.82rem; font-variant-numeric: tabular-nums; }
+#fullscreen .i-exit, .frame.fs #fullscreen .i-enter { display: none; }
+.frame.fs #fullscreen .i-exit { display: inline; }
+#ov-play .i-pause, #ov-play.on .i-play { display: none; }
+#ov-play.on .i-pause { display: inline; }
+.frame.fs .ov-btn { width: 2.8rem; height: 2.8rem; }
+.frame.fs .ov-pill { width: auto; font-size: 0.95rem; }
+.frame.fs .ov-btn svg { width: 1.6rem; height: 1.6rem; }
+@media (max-width: 520px) { .seek { gap: 0.45rem; padding-left: 0.6rem; padding-right: 0.4rem; } }
+.fs-skip { width: 4rem; height: 4rem; position: relative; }
+.fs-skip svg { width: 2.4rem; height: 2.4rem; grid-area: 1 / 1; }
+.fs-skip b { grid-area: 1 / 1; font-size: 0.72rem; font-weight: 800; padding-top: 0.15rem; }
+.fs-play { width: 5.2rem; height: 5.2rem; background: color-mix(in srgb, var(--accent) 85%, transparent); box-shadow: 0 8px 30px rgb(0 0 0 / 0.35); }
+.fs-play svg { width: 2.4rem; height: 2.4rem; grid-area: 1 / 1; }
+.fs-play .i-pause, .fs-play.on .i-play { display: none; }
+.fs-play.on .i-pause { display: inline; }
+.frame.fs .seek { padding: 3rem max(1.2rem, env(safe-area-inset-right)) max(0.9rem, env(safe-area-inset-bottom)) max(1.2rem, env(safe-area-inset-left)); font-size: 0.95rem; }
+.frame.fs .seek-bar { height: 2.6rem; }
+.frame.fs .seek-played::after { transform: scale(1.05); }
+.frame.fs.idle .fs-top, .frame.fs.idle .fs-mid { opacity: 0; pointer-events: none; }
+.frame.fs.idle .fs-mid .fs-btn { pointer-events: none; }
+
+/* Double-tap skip feedback: a soft half-circle on that side with the total skipped. */
+.skip-flash {
+  position: absolute; top: 0; bottom: 0; width: 38%; z-index: 1; pointer-events: none;
+  display: grid; place-items: center; opacity: 0; transition: opacity 0.35s;
+  background: radial-gradient(ellipse at var(--x) 50%, rgb(255 255 255 / 0.18), transparent 70%);
+}
+.skip-flash.left { left: 0; --x: 0%; }
+.skip-flash.right { right: 0; --x: 100%; }
+.skip-flash.on { opacity: 1; transition: opacity 0.08s; }
+.skip-flash span { color: white; font-weight: 800; font-size: 1.1rem; text-shadow: 0 1px 4px rgb(0 0 0 / 0.6); background: rgb(0 0 0 / 0.35); padding: 0.4rem 0.85rem; border-radius: 999px; }
+
 .controls { display: flex; justify-content: center; align-items: center; gap: 1.1rem; margin: 0.3rem 0; flex-wrap: wrap; }
 .ctl { width: 3.3rem; height: 3.3rem; font-weight: 700; padding: 0; background: var(--surface-2); border-color: transparent; font-size: 0.95rem; }
 .ctl.play {

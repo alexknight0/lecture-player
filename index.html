@@ -52,8 +52,31 @@
       <video id="video" playsinline preload="auto"></video>
       <div id="spinner" class="spinner" hidden aria-hidden="true"></div>
       <p id="player-error" class="player-error" hidden></p>
+      <!-- Full-screen touch controls (shown only while #frame is full screen). -->
+      <div class="fs-top">
+        <span id="fs-title" class="fs-title"></span>
+      </div>
+      <div class="fs-mid">
+        <button id="fs-back" type="button" class="fs-btn fs-skip" aria-label="Back 10 seconds">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3M4 4v4h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><b>10</b>
+        </button>
+        <button id="fs-play" type="button" class="fs-btn fs-play" aria-label="Play">
+          <svg class="i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>
+          <svg class="i-pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h4v14H7zM13 5h4v14h-4z" fill="currentColor"/></svg>
+        </button>
+        <button id="fs-fwd" type="button" class="fs-btn fs-skip" aria-label="Forward 10 seconds">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3M20 4v4h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><b>10</b>
+        </button>
+      </div>
+      <div id="skip-left" class="skip-flash left" aria-hidden="true"><span></span></div>
+      <div id="skip-right" class="skip-flash right" aria-hidden="true"><span></span></div>
       <!-- Seek bar over the bottom of the video, like other players; fades out while playing. -->
       <div class="seek">
+        <!-- Small play/pause at the bottom left, like other players (the big one stays below). -->
+        <button id="ov-play" type="button" class="ov-btn" aria-label="Play" title="Play / pause (space)">
+          <svg class="i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>
+          <svg class="i-pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h4v14H7zM13 5h4v14h-4z" fill="currentColor"/></svg>
+        </button>
         <span id="time-now">0:00</span>
         <div class="seek-bar">
           <div id="seek-buffered" class="seek-buffered"></div>
@@ -61,6 +84,12 @@
           <input id="seek" type="range" min="0" max="1000" step="1" value="0" aria-label="Seek">
         </div>
         <span id="time-total">0:00</span>
+        <!-- Speed and full screen at the bottom right, where most players put them. -->
+        <button id="speed" type="button" class="ov-btn ov-pill" title="Playback speed" aria-label="Playback speed">1×</button>
+        <button id="fullscreen" type="button" class="ov-btn" title="Full screen (f)" aria-label="Full screen">
+          <svg class="i-enter" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <svg class="i-exit" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
       </div>
     </div>
     <section class="panel">
@@ -73,13 +102,11 @@
       <button id="fwd10" type="button" class="ctl" aria-label="Forward 10 seconds" title="Forward 10 s (→)">+10</button>
     </div>
     <div class="controls small-row">
-      <button id="speed" type="button" class="small" title="Playback speed">1×</button>
       <div id="layout" class="seg" role="group" aria-label="Which video source to show" hidden>
         <button type="button" data-layout="both" class="small">Both</button>
         <button type="button" data-layout="left" class="small">Left</button>
         <button type="button" data-layout="right" class="small">Right</button>
       </div>
-      <button id="fullscreen" type="button" class="small" title="Full screen (f)">Full screen</button>
       <button id="mark" type="button" class="small">Mark as watched</button>
     </div>
     <p id="video-info" class="muted"></p>
