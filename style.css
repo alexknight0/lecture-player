@@ -118,11 +118,14 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 .tabs::-webkit-scrollbar { display: none; }
 .tabs button { flex: none; padding: 0.45rem 1rem; font-size: 0.92rem; font-weight: 600; background: var(--surface); box-shadow: var(--shadow); border-color: transparent; }
 .tabs button[aria-pressed="true"] { background: var(--accent); color: white; box-shadow: 0 4px 12px color-mix(in srgb, var(--accent) 35%, transparent); }
-.course-name { margin: 0 0 0.2rem; font-size: 1.25rem; font-weight: 700; letter-spacing: -0.015em; }
-.course-name:empty { display: none; }
-.list-bar { display: flex; align-items: center; gap: 0.75rem; margin: 0 0 0.9rem; min-height: 1.9rem; }
-.list-status { margin: 0; color: var(--muted); font-size: 0.85rem; }
-.fold-all { margin-left: auto; flex: none; background: var(--surface); border-color: transparent; box-shadow: var(--shadow); font-weight: 600; }
+/* Course name with Expand/Collapse all on the same line (the button wraps under a long name only
+   if there's no room), then the uploaded count. */
+.course-head { display: flex; align-items: center; gap: 0.75rem; margin: 0 0 0.2rem; }
+.course-name { margin: 0; flex: 1; min-width: 0; font-size: 1.25rem; font-weight: 700; letter-spacing: -0.015em; }
+.course-name:empty { visibility: hidden; }
+.list-status { margin: 0 0 0.9rem; color: var(--muted); font-size: 0.85rem; }
+.list-status:empty { margin-bottom: 0.7rem; }
+.fold-all { flex: none; align-self: flex-start; background: var(--surface); border-color: transparent; box-shadow: var(--shadow); font-weight: 600; }
 
 /* Folders: top-level ones are cards; nested ones are indented sections inside them. */
 #list > details.folder, #list > ul.loose {
