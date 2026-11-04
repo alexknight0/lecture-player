@@ -1,0 +1,133 @@
+:root {
+  color-scheme: light dark;
+  font-family: system-ui, sans-serif;
+  --accent: #6d28d9;
+  --accent-text: #8b5cf6;
+  --danger: #d33;
+  --muted: color-mix(in srgb, currentColor 60%, transparent);
+  --line: color-mix(in srgb, currentColor 18%, transparent);
+  --card: color-mix(in srgb, currentColor 5%, transparent);
+  --pad: 1rem;
+}
+
+[hidden] { display: none !important; }
+
+body {
+  max-width: 64rem;
+  margin: 0 auto;
+  padding: var(--pad);
+  padding-bottom: calc(var(--pad) + env(safe-area-inset-bottom));
+}
+
+header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.6rem; }
+h1 { margin: 0; font-size: 1.4rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+body.playing-view h1 { font-size: 1.05rem; white-space: normal; }
+#account { margin-left: auto; display: flex; gap: 0.5rem; }
+#account button { white-space: nowrap; }
+
+button {
+  font: inherit;
+  padding: 0.5rem 0.9rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: inherit;
+  cursor: pointer;
+}
+button.small { padding: 0.3rem 0.65rem; font-size: 0.85rem; }
+button.primary { background: var(--accent); border-color: var(--accent); color: white; }
+.icon-btn { padding: 0.25rem; border: none; background: none; display: inline-flex; }
+.icon-btn svg { width: 1.6rem; height: 1.6rem; }
+.muted { color: var(--muted); font-size: 0.85rem; }
+
+/* Version indicator next to the title: green dot = latest, orange "Update" = stale copy,
+   hollow grey = couldn't check (offline) or still checking. */
+.version {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  padding: 0.2rem 0.4rem; border: none; background: none; font-size: 0.8rem; flex: none;
+}
+.version i { width: 0.6rem; height: 0.6rem; border-radius: 50%; box-sizing: border-box; border: 2px solid var(--muted); }
+.version[data-state="ok"] i { background: #2da44e; border-color: #2da44e; }
+.version[data-state="stale"] { border: 1px solid #d97706; color: #d97706; font-weight: 600; padding: 0.2rem 0.6rem; }
+.version[data-state="stale"] i { background: #d97706; border-color: #d97706; }
+.version[data-state="updating"] i { border-color: #d97706; border-top-color: transparent; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Loading screen while sign-in is checked. */
+.boot { text-align: center; margin-top: 3rem; color: var(--muted); }
+.boot p { display: flex; align-items: center; justify-content: center; gap: 0.6rem; }
+.boot-spin { width: 1.1rem; height: 1.1rem; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--accent); animation: spin 0.8s linear infinite; }
+.boot-slow { visibility: hidden; animation: show 0s 10s forwards; }
+@keyframes show { to { visibility: visible; } }
+.gate { text-align: center; margin-top: 3rem; }
+
+/* Course tabs */
+.tabs { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.4rem; }
+.tabs button { border-radius: 999px; padding: 0.35rem 0.9rem; font-size: 0.9rem; }
+.tabs button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: white; }
+#list-status:empty { display: none; }
+
+/* Video list */
+#list h2 { font-size: 0.95rem; margin: 1.2rem 0 0.3rem; color: var(--muted); font-weight: 600; }
+#list ul { list-style: none; margin: 0; padding: 0; }
+#list li button {
+  display: block; width: 100%; text-align: left; border: none; border-bottom: 1px solid var(--line);
+  border-radius: 0; background: none; padding: 0.65rem 0.2rem;
+}
+#list li button:hover { background: var(--card); }
+.row-title { display: block; font-weight: 600; }
+.row-meta { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; font-size: 0.82rem; color: var(--muted); margin-top: 0.15rem; }
+.row-bar { display: block; height: 3px; background: var(--line); border-radius: 2px; margin-top: 0.4rem; overflow: hidden; }
+.row-bar i { display: block; height: 100%; background: var(--accent-text); }
+li.done button { opacity: 0.6; }
+.done-tag { color: #2da44e; font-weight: 600; }
+.last-tag { background: var(--accent); color: white; border-radius: 999px; padding: 0 0.45rem; font-size: 0.72rem; font-weight: 600; }
+.empty { color: var(--muted); text-align: center; margin-top: 2rem; }
+
+/* Player. The frame keeps the video's aspect ratio (half of it when one side of a dual
+   recording is shown). Showing one side = the video is twice the frame's width and shifted. */
+.frame {
+  position: relative; overflow: hidden; background: #000; border-radius: 0.5rem;
+  aspect-ratio: var(--ar, 16 / 9); max-height: 75vh; margin: 0 auto;
+}
+.frame video { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain; }
+.frame[data-layout="left"] video, .frame[data-layout="right"] video { width: 200%; }
+.frame[data-layout="right"] video { left: -100%; }
+.frame:fullscreen { max-height: none; border-radius: 0; aspect-ratio: auto; }
+.frame:-webkit-full-screen { max-height: none; border-radius: 0; }
+.spinner {
+  position: absolute; inset: 0; margin: auto; width: 3rem; height: 3rem; border-radius: 50%;
+  border: 4px solid rgb(255 255 255 / 0.25); border-top-color: white; animation: spin 0.9s linear infinite;
+}
+.player-error { position: absolute; inset: auto 1rem 1rem; color: white; background: rgb(200 30 30 / 0.85); padding: 0.5rem 0.8rem; border-radius: 0.4rem; margin: 0; }
+
+.seek { display: flex; align-items: center; gap: 0.6rem; margin: 0.7rem 0 0.2rem; font-variant-numeric: tabular-nums; font-size: 0.85rem; }
+.seek-bar { position: relative; flex: 1; height: 1.6rem; }
+.seek-bar::before, .seek-buffered, .seek-played { content: ""; position: absolute; left: 9px; right: 9px; top: 50%; height: 4px; margin-top: -2px; border-radius: 2px; }
+.seek-bar::before { background: var(--line); }
+.seek-buffered { background: color-mix(in srgb, currentColor 35%, transparent); right: auto; }
+.seek-played { background: var(--accent-text); right: auto; }
+.seek input { position: absolute; inset: 0; width: 100%; margin: 0; opacity: 0; cursor: pointer; }
+
+.controls { display: flex; justify-content: center; align-items: center; gap: 1rem; margin: 0.4rem 0; flex-wrap: wrap; }
+.ctl { width: 3.4rem; height: 3.4rem; border-radius: 50%; font-weight: 700; padding: 0; }
+.ctl.play { width: 4rem; height: 4rem; background: var(--accent); border-color: var(--accent); color: white; display: inline-flex; align-items: center; justify-content: center; }
+.ctl.play svg { width: 1.8rem; height: 1.8rem; }
+.ctl.play .i-pause, .ctl.play.on .i-play { display: none; }
+.ctl.play.on .i-pause { display: inline; }
+.small-row { gap: 0.5rem; }
+.seg { display: inline-flex; }
+.seg button { border-radius: 0; margin-left: -1px; }
+.seg button:first-child { border-radius: 0.5rem 0 0 0.5rem; }
+.seg button:last-child { border-radius: 0 0.5rem 0.5rem 0; }
+.seg button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: white; }
+#mark.on { color: #2da44e; border-color: #2da44e; }
+#video-info { text-align: center; }
+
+/* Home link (to /home/), same as the other sites. */
+.home-link { display: inline-flex; color: inherit; opacity: 0.75; flex: none; }
+.home-link:hover { opacity: 1; }
+.home-link svg { width: 1.4rem; height: 1.4rem; }
+@media (pointer: coarse) {
+  .home-link { padding: 7px; margin: -7px; }
+}

@@ -1,0 +1,8 @@
+#!/bin/sh
+# Stamps version.js (VERSION + a hash of every app file) so the update light can tell when a
+# device runs a stale copy or a mix of old and new files. The hook itself is shared by all of
+# Alex's Pages sites: github.com/alexknight0/pages-common, cloned at ~/projects/pages-common.
+# Install once per clone:  ln -sf ../../tools/pre-commit .git/hooks/pre-commit
+hook="$HOME/projects/pages-common/pre-commit"
+[ -x "$hook" ] || { echo "pre-commit: clone git@github.com:alexknight0/pages-common.git to ~/projects/pages-common" >&2; exit 1; }
+exec "$hook"

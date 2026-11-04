@@ -1,0 +1,2 @@
+# Learn.UQ courses to scan, one course id or URL per line.
+# Leave empty to scan every course in the current semester.

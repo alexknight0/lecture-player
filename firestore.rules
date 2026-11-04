@@ -1,0 +1,24 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Only Alex. The recordings are UQ course material licensed for personal study, so the
+    // site isn't shared. Videos are written by tools/get.py through the REST API with Alex's
+    // gcloud credentials (IAM, not these rules), so browsers never need write access to them.
+    function isAlex() {
+      return request.auth != null && request.auth.token.email_verified == true
+        && request.auth.token.email.lower() == 'octopus0246@gmail.com';
+    }
+
+    match /videos/{id} {
+      allow read: if isAlex();
+      match /chunks/{chunk} {
+        allow read: if isAlex();
+      }
+    }
+
+    // Watch progress: { progress: { videoId: { pos, done, t } } }
+    match /users/{uid} {
+      allow read, write: if isAlex() && request.auth.uid == uid;
+    }
+  }
+}

@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Lectures</title>
+  <meta name="theme-color" content="#6d28d9">
+  <link rel="icon" href="icon.svg">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <a class="home-link" href="../home/" aria-label="Home page (all sites)" title="Home page (all sites)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5M5.5 9.5V20h5v-5.5h3V20h5V9.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+    <button id="back" type="button" class="icon-btn" aria-label="Back to the list" title="Back to the list" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5 8 12l7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <h1 id="title">Lectures</h1>
+    <button id="version" type="button" class="version" data-state="checking" aria-label="Checking for updates…" title="Checking for updates…"><i></i><span></span></button>
+    <div id="account">
+      <button id="signout" type="button" class="small" hidden>Sign out</button>
+    </div>
+  </header>
+
+  <!-- Shown until the app knows whether you're signed in, so a slow start (or Firebase never
+       loading) isn't a blank page. The "taking a while" line appears after 10 s by CSS alone. -->
+  <section id="boot" class="boot" role="status" aria-live="polite">
+    <p><span class="boot-spin" aria-hidden="true"></span><span id="boot-text">Checking sign-in…</span></p>
+    <p class="boot-slow">This is taking a while. <button type="button" onclick="location.reload()">Reload</button></p>
+  </section>
+
+  <section id="gate" class="gate" hidden>
+    <p id="gate-msg">Sign in to watch your lectures.</p>
+    <button id="signin" type="button" class="primary">Sign in with Google</button>
+  </section>
+
+  <main id="list-view" hidden>
+    <nav id="course-tabs" class="tabs" aria-label="Courses"></nav>
+    <p id="list-status" class="muted" role="status"></p>
+    <div id="list"></div>
+  </main>
+
+  <main id="player-view" hidden>
+    <div id="frame" class="frame">
+      <video id="video" playsinline preload="auto"></video>
+      <div id="spinner" class="spinner" hidden aria-hidden="true"></div>
+      <p id="player-error" class="player-error" hidden></p>
+    </div>
+    <div class="seek">
+      <span id="time-now">0:00</span>
+      <div class="seek-bar">
+        <div id="seek-buffered" class="seek-buffered"></div>
+        <div id="seek-played" class="seek-played"></div>
+        <input id="seek" type="range" min="0" max="1000" step="1" value="0" aria-label="Seek">
+      </div>
+      <span id="time-total">0:00</span>
+    </div>
+    <div class="controls">
+      <button id="back10" type="button" class="ctl" aria-label="Back 10 seconds" title="Back 10 s (←)">−10</button>
+      <button id="play" type="button" class="ctl play" aria-label="Play" title="Play / pause (space)">
+        <svg class="i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>
+        <svg class="i-pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h4v14H7zM13 5h4v14h-4z" fill="currentColor"/></svg>
+      </button>
+      <button id="fwd10" type="button" class="ctl" aria-label="Forward 10 seconds" title="Forward 10 s (→)">+10</button>
+    </div>
+    <div class="controls small-row">
+      <button id="speed" type="button" class="small" title="Playback speed">1×</button>
+      <div id="layout" class="seg" role="group" aria-label="Which video source to show" hidden>
+        <button type="button" data-layout="both" class="small">Both</button>
+        <button type="button" data-layout="left" class="small">Left</button>
+        <button type="button" data-layout="right" class="small">Right</button>
+      </div>
+      <button id="fullscreen" type="button" class="small" title="Full screen (f)">Full screen</button>
+      <button id="mark" type="button" class="small">Mark as watched</button>
+    </div>
+    <p id="video-info" class="muted"></p>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
