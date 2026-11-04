@@ -187,9 +187,9 @@ def main():
             kind = "dual" if len([n for n in path.parent.iterdir() if re.match(r"s[1-9]q\d\.mp4", n.name)]) > 1 else "single"
             meta = meta_for(v, path, kind)
             size = path.stat().st_size
-            if used + size > QUOTA_BYTES * 0.97:
-                print(f"  not uploaded: {size / 1e6:.0f} MB would go over the free 1 GiB database limit "
-                      f"({used / 1e6:.0f} MB used). Delete something with --delete first.")
+            if used + size > QUOTA_BYTES:
+                print(f"  not uploaded: {size / 1e6:.0f} MB would go over the {QUOTA_BYTES / 1e9:.0f} GB safety limit "
+                      f"({used / 1e6:.0f} MB used). Raise it with LP_LIMIT_GB=<n> or delete something with --delete.")
                 continue
             print(f"  uploading {size / 1e6:.0f} MB…", flush=True)
             store.upload(video_id(v), path, meta, log=lambda s: print(s, flush=True))

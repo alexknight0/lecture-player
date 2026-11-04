@@ -6,6 +6,7 @@ Firebase Storage needs a billing account.
 """
 import base64
 import json
+import os
 import subprocess
 import time
 from pathlib import Path
@@ -18,7 +19,10 @@ DOCS = f"projects/{PROJECT}/databases/(default)/documents"
 API = f"https://firestore.googleapis.com/v1/{DOCS}"
 CHUNK_BYTES = 1_000_000          # Firestore documents are capped at 1 MiB
 COMMIT_BYTES = 8_000_000         # a commit is capped at 10 MiB
-QUOTA_BYTES = 1024 ** 3          # free (Spark) plan: 1 GiB stored in total
+# Billing (Blaze) has been on since 2026-11-04, so the free 1 GiB is no longer a hard stop.
+# This is a safety limit against uploading far more than intended (Firestore storage costs
+# about US$0.18/GB a month). Raise it with LP_LIMIT_GB=<n>.
+QUOTA_BYTES = int(float(os.environ.get("LP_LIMIT_GB", "20")) * 1e9)
 
 
 class Store:
