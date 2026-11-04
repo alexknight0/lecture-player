@@ -109,18 +109,20 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 .gate p { color: var(--muted); margin: 0 0 1.4rem; }
 
 /* Course tabs */
+/* The row scrolls sideways on narrow screens, and a scrolling box clips shadows at its edges,
+   so it has padding big enough for the active tab's glow, cancelled by negative margins. */
 .tabs {
-  display: flex; gap: 0.4rem; overflow-x: auto; scrollbar-width: none; margin: 0 -0.25rem 0.9rem;
-  padding: 0.25rem;
+  display: flex; gap: 0.4rem; overflow-x: auto; scrollbar-width: none;
+  margin: -0.6rem -0.9rem -0.4rem; padding: 0.6rem 0.9rem 1.3rem;
 }
 .tabs::-webkit-scrollbar { display: none; }
 .tabs button { flex: none; padding: 0.45rem 1rem; font-size: 0.92rem; font-weight: 600; background: var(--surface); box-shadow: var(--shadow); border-color: transparent; }
-.tabs button[aria-pressed="true"] { background: var(--accent); color: white; box-shadow: 0 6px 16px color-mix(in srgb, var(--accent) 35%, transparent); }
+.tabs button[aria-pressed="true"] { background: var(--accent); color: white; box-shadow: 0 4px 12px color-mix(in srgb, var(--accent) 35%, transparent); }
 .course-name { margin: 0 0 0.2rem; font-size: 1.25rem; font-weight: 700; letter-spacing: -0.015em; }
 .course-name:empty { display: none; }
-.list-status { margin: 0 0 1rem; color: var(--muted); font-size: 0.85rem; }
-.list-status:empty { display: none; }
-.course-name:empty + .list-status:empty + #list { margin-top: 0; }
+.list-bar { display: flex; align-items: center; gap: 0.75rem; margin: 0 0 0.9rem; min-height: 1.9rem; }
+.list-status { margin: 0; color: var(--muted); font-size: 0.85rem; }
+.fold-all { margin-left: auto; flex: none; background: var(--surface); border-color: transparent; box-shadow: var(--shadow); font-weight: 600; }
 
 /* Folders: top-level ones are cards; nested ones are indented sections inside them. */
 #list > details.folder, #list > ul.loose {
@@ -197,24 +199,38 @@ li.missing .row-title { color: var(--muted); font-weight: 500; }
   position: absolute; inset: 0; margin: auto; width: 3rem; height: 3rem; border-radius: 50%;
   border: 4px solid rgb(255 255 255 / 0.25); border-top-color: white; animation: spin 0.9s linear infinite;
 }
-.player-error { position: absolute; inset: auto 1rem 1rem; color: white; background: rgb(200 30 30 / 0.85); padding: 0.5rem 0.8rem; border-radius: 0.6rem; margin: 0; }
+.player-error { position: absolute; inset: auto 1rem 4rem; color: white; background: rgb(200 30 30 / 0.85); padding: 0.5rem 0.8rem; border-radius: 0.6rem; margin: 0; }
 
 .panel {
   background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow);
-  margin-top: 0.9rem; padding: 0.6rem 1rem 0.9rem;
+  margin-top: 0.9rem; padding: 0.8rem 1rem 0.9rem;
 }
 
-.seek { display: flex; align-items: center; gap: 0.75rem; margin: 0.2rem 0 0.4rem; font-variant-numeric: tabular-nums; font-size: 0.82rem; color: var(--muted); }
+/* Seek bar overlaid on the bottom of the video. Hidden while playing with no pointer activity
+   (.idle, set by app.js); always shown when paused. Also shown in full screen (the frame is the
+   full-screen element). */
+.seek {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 2;
+  display: flex; align-items: center; gap: 0.75rem; padding: 2.2rem 0.9rem 0.45rem;
+  background: linear-gradient(transparent, rgb(0 0 0 / 0.72));
+  font-variant-numeric: tabular-nums; font-size: 0.82rem; color: white; font-weight: 600;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.6);
+  transition: opacity 0.25s;
+}
+.frame.idle .seek { opacity: 0; pointer-events: none; }
+.frame.idle { cursor: none; }
+.frame.idle video { cursor: none; }
 .seek-bar { position: relative; flex: 1; height: 1.8rem; }
-.seek-bar::before, .seek-buffered, .seek-played { content: ""; position: absolute; left: 9px; right: 9px; top: 50%; height: 6px; margin-top: -3px; border-radius: 3px; }
-.seek-bar::before { background: var(--line); }
-.seek-buffered { background: color-mix(in srgb, var(--accent) 22%, var(--line)); right: auto; }
+.seek-bar::before, .seek-buffered, .seek-played { content: ""; position: absolute; left: 9px; right: 9px; top: 50%; height: 5px; margin-top: -2.5px; border-radius: 3px; }
+.seek-bar::before { background: rgb(255 255 255 / 0.28); }
+.seek-buffered { background: rgb(255 255 255 / 0.5); right: auto; }
 .seek-played { background: linear-gradient(90deg, var(--accent), var(--accent-2)); right: auto; }
+.seek-bar:hover::before, .seek-bar:hover .seek-buffered, .seek-bar:hover .seek-played { height: 7px; margin-top: -3.5px; }
 /* Thumb at the end of the played bar. */
 .seek-played::after {
   content: ""; position: absolute; right: -8px; top: 50%; width: 16px; height: 16px; margin-top: -8px;
-  border-radius: 50%; background: white; box-shadow: 0 1px 4px rgb(0 0 0 / 0.3), 0 0 0 3px var(--accent);
-  transform: scale(0.8); transition: transform 0.15s;
+  border-radius: 50%; background: white; box-shadow: 0 1px 4px rgb(0 0 0 / 0.4);
+  transform: scale(0.75); transition: transform 0.15s;
 }
 .seek-bar:hover .seek-played::after, .seek-bar:active .seek-played::after { transform: scale(1); }
 .seek input { position: absolute; inset: 0; width: 100%; margin: 0; opacity: 0; cursor: pointer; }

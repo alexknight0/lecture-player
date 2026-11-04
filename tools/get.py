@@ -31,6 +31,15 @@ from store import QUOTA_BYTES, Store
 VIDEOS = HOME / "videos"
 
 
+def wanted_courses(cat):
+    """Course codes to upload, from courses.txt (empty = every course in the catalog)."""
+    from scan import COURSES_FILE, parse_course_arg
+    ids = [parse_course_arg(l.split()[0]) for l in COURSES_FILE.read_text().splitlines()
+           if l.strip() and not l.strip().startswith("#")] if COURSES_FILE.exists() else []
+    codes = {c["code"] for c in cat.get("courses", []) if not ids or c["id"] in ids}
+    return codes
+
+
 def load():
     if not CATALOG.exists():
         sys.exit("No catalog yet. Run scan.py first.")
@@ -176,7 +185,8 @@ def main():
     if args.list_all:
         store = Store()
         names = course_names(cat)
-        todo = [(i, v) for i, v in enumerate(vids) if not v.get("duplicateOf")]
+        keep = wanted_courses(cat)
+        todo = [(i, v) for i, v in enumerate(vids) if not v.get("duplicateOf") and v["course"] in keep]
         for n, (i, v) in enumerate(todo, 1):
             store.put_meta(video_id(v), listing(v, i, names))
             if n % 25 == 0 or n == len(todo):
@@ -196,6 +206,8 @@ def main():
     if args.all:
         if not args.course:
             sys.exit("--all needs --course")
+        if args.course not in wanted_courses(cat):
+            sys.exit(f"{args.course} isn't in courses.txt; skipped.")
         chosen += [v for v in vids if v["course"] == args.course and not v.get("uploaded") and not v.get("duplicateOf")]
     if not chosen:
         sys.exit("Nothing chosen. See --list.")

@@ -210,7 +210,7 @@ function renderList() {
         el("span", { class: "row-title", textContent: title }),
         el("span", { class: "row-meta" }, ...meta),
         pct > 0 && !p.done ? el("span", { class: "row-bar" }, el("i", { style: `width:${pct}%` })) : null));
-    if (ready) b.onclick = () => { location.hash = `v=${encodeURIComponent(v.id)}`; };
+    if (ready) b.onclick = () => { location.hash = `v=${encodeURIComponent(v.id)}`; route(); };
     return el("li", { class: [p.done && ready ? "done" : "", ready ? "" : "missing"].join(" ").trim() }, b);
   };
   const parts = [];
@@ -220,6 +220,7 @@ function renderList() {
   parts.push(...renderTree(buildTree(pages), row, latest));
   if (!parts.length) parts.push(el("p", { class: "empty", textContent: `No ${course} videos yet.` }));
   list.replaceChildren(...parts);
+  updateFoldAll();
   const ready = mine.filter((v) => v.done === true).length;
   $("list-status").textContent = ready < mine.length ? `${ready} of ${mine.length} videos uploaded so far.` : "";
 }
@@ -300,12 +301,30 @@ function folder(id, name, children, vs, openByDefault) {
   const d = el("details", { class: "folder", open: folderState[id] ?? Boolean(openByDefault) }, summary,
     rows.length ? el("ul", {}, ...rows) : null, ...rest);
   // Remember only what she chooses (a "toggle" listener would also fire for the default state).
+  d.dataset.id = id;
+  d.addEventListener("toggle", updateFoldAll);
   summary.addEventListener("click", () => setTimeout(() => {
     folderState[id] = d.open;
     localStorage.setItem(KEY + "folders", JSON.stringify(folderState));
   }));
   return d;
 }
+
+// "Expand all" when any folder in this course is closed, otherwise "Collapse all".
+function updateFoldAll() {
+  const ds = [...$("list").querySelectorAll("details.folder")];
+  const btn = $("fold-all");
+  btn.hidden = ds.length < 2;
+  btn.textContent = ds.some((d) => !d.open) ? "Expand all" : "Collapse all";
+}
+
+$("fold-all").onclick = () => {
+  const ds = [...$("list").querySelectorAll("details.folder")];
+  const open = ds.some((d) => !d.open);
+  for (const d of ds) { d.open = open; folderState[d.dataset.id] = open; }
+  localStorage.setItem(KEY + "folders", JSON.stringify(folderState));
+  updateFoldAll();
+};
 
 // ---------- player ----------
 
@@ -370,6 +389,11 @@ function openVideo(v) {
   video.playbackRate = Number(localStorage.getItem(KEY + "speed")) || 1;
   $("speed").textContent = `${video.playbackRate}×`;
   setupMediaSession(v, title);
+  // Start playing straight away. When this runs inside the tap on a row (the row's click calls
+  // route() directly), the browser counts it as a user gesture, so sound is allowed even on
+  // iPhone/iPad. Opening from a link or a reload may be refused; then it just waits paused.
+  video.play().catch((e) => { if (e.name !== "NotAllowedError" && e.name !== "AbortError") console.warn("autoplay:", e); updateSeek(); });
+  poke();
 }
 
 function closeVideo() {
@@ -457,6 +481,18 @@ video.addEventListener("playing", () => { $("spinner").hidden = true; });
 video.addEventListener("seeked", () => { $("spinner").hidden = true; updateSeek(); });
 video.addEventListener("ended", () => { if (current) { Progress.set(current.id, { done: true, pos: current.duration }); updateMark(); Progress.flush(); } });
 video.addEventListener("click", togglePlay);
+
+// Overlay seek bar: hide it 2.5 s after the last pointer/touch activity while playing.
+let idleTimer = null;
+function poke() {
+  const frame = $("frame");
+  frame.classList.remove("idle");
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(() => { if (!video.paused && !seeking) frame.classList.add("idle"); }, 2500);
+}
+for (const ev of ["pointermove", "pointerdown", "touchstart"]) $("frame").addEventListener(ev, poke, { passive: true });
+video.addEventListener("play", poke);
+video.addEventListener("pause", () => { clearTimeout(idleTimer); $("frame").classList.remove("idle"); });
 
 const seek = $("seek");
 seek.addEventListener("input", () => { seeking = true; updateSeek(); });

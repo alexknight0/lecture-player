@@ -40,7 +40,10 @@
   <main id="list-view" hidden>
     <nav id="course-tabs" class="tabs" aria-label="Courses"></nav>
     <h2 id="course-name" class="course-name"></h2>
-    <p id="list-status" class="list-status" role="status"></p>
+    <div class="list-bar">
+      <p id="list-status" class="list-status" role="status"></p>
+      <button id="fold-all" type="button" class="small fold-all" hidden>Expand all</button>
+    </div>
     <div id="list"></div>
   </main>
 
@@ -49,17 +52,18 @@
       <video id="video" playsinline preload="auto"></video>
       <div id="spinner" class="spinner" hidden aria-hidden="true"></div>
       <p id="player-error" class="player-error" hidden></p>
+      <!-- Seek bar over the bottom of the video, like other players; fades out while playing. -->
+      <div class="seek">
+        <span id="time-now">0:00</span>
+        <div class="seek-bar">
+          <div id="seek-buffered" class="seek-buffered"></div>
+          <div id="seek-played" class="seek-played"></div>
+          <input id="seek" type="range" min="0" max="1000" step="1" value="0" aria-label="Seek">
+        </div>
+        <span id="time-total">0:00</span>
+      </div>
     </div>
     <section class="panel">
-    <div class="seek">
-      <span id="time-now">0:00</span>
-      <div class="seek-bar">
-        <div id="seek-buffered" class="seek-buffered"></div>
-        <div id="seek-played" class="seek-played"></div>
-        <input id="seek" type="range" min="0" max="1000" step="1" value="0" aria-label="Seek">
-      </div>
-      <span id="time-total">0:00</span>
-    </div>
     <div class="controls">
       <button id="back10" type="button" class="ctl" aria-label="Back 10 seconds" title="Back 10 s (←)">−10</button>
       <button id="play" type="button" class="ctl play" aria-label="Play" title="Play / pause (space)">

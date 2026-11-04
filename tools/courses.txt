@@ -1,2 +1,5 @@
 # Learn.UQ courses to scan, one course id or URL per line.
 # Leave empty to scan every course in the current semester.
+_208182_1  ANAT1012
+_206626_1  PHTY1200
+_206616_1  PHTY1221
