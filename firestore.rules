@@ -1,24 +1,25 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Only Alex. The recordings are UQ course material licensed for personal study, so the
-    // site isn't shared. Videos are written by tools/get.py through the REST API with Alex's
-    // gcloud credentials (IAM, not these rules), so browsers never need write access to them.
-    function isAlex() {
+    // Sophie (the site is hers; the videos come from her own Learn.UQ account) and Alex (who
+    // develops it). UQ recordings are licensed for personal study, so nobody else.
+    // Videos are written by tools/get.py through the REST API with Alex's gcloud credentials
+    // (IAM, not these rules), so browsers never need write access to them.
+    function allowed() {
       return request.auth != null && request.auth.token.email_verified == true
-        && request.auth.token.email.lower() == 'octopus0246@gmail.com';
+        && request.auth.token.email.lower() in ['erex0246@gmail.com', 'octopus0246@gmail.com'];
     }
 
     match /videos/{id} {
-      allow read: if isAlex();
+      allow read: if allowed();
       match /chunks/{chunk} {
-        allow read: if isAlex();
+        allow read: if allowed();
       }
     }
 
-    // Watch progress: { progress: { videoId: { pos, done, t } } }
+    // Watch progress, one doc per person: { progress: { videoId: { pos, done, t } } }
     match /users/{uid} {
-      allow read, write: if isAlex() && request.auth.uid == uid;
+      allow read, write: if allowed() && request.auth.uid == uid;
     }
   }
 }

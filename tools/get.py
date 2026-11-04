@@ -51,12 +51,29 @@ def label(v):
 
 
 def nice_title(v):
-    """Echo360's titles are often section codes or file names; make them readable."""
+    """Echo360's titles are often section codes or file names; make them readable.
+    Recordings named only by their section code (e.g. "[ANAT1012_…]/LEC02/01") get no title,
+    and the site shows "Lecture N · date" instead."""
     t = v["title"]
     if v["kind"] == "recording":
-        return "Lecture recording"
+        return "" if re.search(r"(_IN\]?|/LEC\d+/\d+)$", t) or t.startswith("[") else t
     t = re.sub(r"\.(mp4|mov|m4v)$", "", t, flags=re.I)
     return t
+
+
+def listing(v, order, course_names):
+    """The fields the site needs to list a video, whether or not it has been uploaded."""
+    return {
+        "course": v["course"], "courseName": course_names.get(v["course"], ""), "kind": v["kind"],
+        "title": nice_title(v), "echoTitle": v.get("echoTitle") or v["title"], "page": v.get("page") or "",
+        "where": v.get("where") or "", "date": v.get("date") or (v.get("modified") or "")[:10],
+        "start": v.get("start") or "", "order": order, "key": v["key"],
+    }
+
+
+def course_names(cat):
+    return {c["code"]: re.sub(r"^\[[^\]]+\]\s*", "", c["name"]).split(" (St Lucia)")[0].split(". Semester")[0]
+            for c in cat.get("courses", [])}
 
 
 def ffprobe(path):
@@ -117,18 +134,15 @@ def fetch(b, v, log=print):
     return out
 
 
-def meta_for(v, path, kind):
+def meta_for(v, path, kind, base):
     lay = layout(path)
     info = ffprobe(path)
     duration = float(info["format"]["duration"])
     vs = next(s for s in info["streams"] if s["codec_type"] == "video")
     return {
-        "course": v["course"], "kind": v["kind"], "title": nice_title(v), "echoTitle": v.get("echoTitle") or v["title"],
-        "page": v.get("page") or "", "where": v.get("where") or "", "date": v.get("date") or (v.get("modified") or "")[:10],
-        "start": v.get("start") or "", "duration": round(duration, 3), "width": int(vs["width"]), "height": int(vs["height"]),
+        **base, "duration": round(duration, 3), "width": int(vs["width"]), "height": int(vs["height"]),
         "layout": kind, "mime": lay["mime"],
         "times": [t for t, _ in lay["index"]], "offsets": [o for _, o in lay["index"]],
-        "key": v["key"],
     }
 
 
@@ -140,9 +154,21 @@ def main():
     ap.add_argument("--all", action="store_true", help="with --course: every video not uploaded yet")
     ap.add_argument("--no-upload", action="store_true")
     ap.add_argument("--delete", action="store_true", help="remove the given videos from the site")
+    ap.add_argument("--list-all", action="store_true",
+                    help="put every catalog video on the site's list (titles etc. only; not uploaded ones show as such)")
     args = ap.parse_args()
     cat = load()
     vids = cat["videos"]
+
+    if args.list_all:
+        store = Store()
+        names = course_names(cat)
+        todo = [(i, v) for i, v in enumerate(vids) if not v.get("duplicateOf")]
+        for n, (i, v) in enumerate(todo, 1):
+            store.put_meta(video_id(v), listing(v, i, names))
+            if n % 25 == 0 or n == len(todo):
+                print(f"{n}/{len(todo)} listed", flush=True)
+        return
 
     if args.list:
         for i, v in enumerate(vids, 1):
@@ -162,6 +188,7 @@ def main():
         sys.exit("Nothing chosen. See --list.")
 
     store = Store()
+    names = course_names(cat)
     if args.delete:
         for v in chosen:
             store.delete(video_id(v))
@@ -185,7 +212,7 @@ def main():
             if args.no_upload:
                 continue
             kind = "dual" if len([n for n in path.parent.iterdir() if re.match(r"s[1-9]q\d\.mp4", n.name)]) > 1 else "single"
-            meta = meta_for(v, path, kind)
+            meta = meta_for(v, path, kind, listing(v, vids.index(v), names))
             size = path.stat().st_size
             if used + size > QUOTA_BYTES:
                 print(f"  not uploaded: {size / 1e6:.0f} MB would go over the {QUOTA_BYTES / 1e9:.0f} GB safety limit "

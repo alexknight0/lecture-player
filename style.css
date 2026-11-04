@@ -68,7 +68,7 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 #list-status:empty { display: none; }
 
 /* Video list */
-#list h2 { font-size: 0.95rem; margin: 1.2rem 0 0.3rem; color: var(--muted); font-weight: 600; }
+#list h2 { font-size: 0.95rem; margin: 1.2rem 0 0.3rem; color: var(--muted); font-weight: 600; overflow-wrap: anywhere; }
 #list ul { list-style: none; margin: 0; padding: 0; }
 #list li button {
   display: block; width: 100%; text-align: left; border: none; border-bottom: 1px solid var(--line);
@@ -81,6 +81,9 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 .row-bar i { display: block; height: 100%; background: var(--accent-text); }
 li.done button { opacity: 0.6; }
 .done-tag { color: #2da44e; font-weight: 600; }
+.missing-tag { font-style: italic; }
+li.missing button { opacity: 0.55; cursor: default; }
+li.missing button:hover { background: none; }
 .last-tag { background: var(--accent); color: white; border-radius: 999px; padding: 0 0.45rem; font-size: 0.72rem; font-weight: 600; }
 .empty { color: var(--muted); text-align: center; margin-top: 2rem; }
 

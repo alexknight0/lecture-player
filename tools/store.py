@@ -90,12 +90,23 @@ class Store:
         self.commit([{"update": {"name": f"{DOCS}/videos/{vid}", "fields": encode({**meta, "size": len(data),
                      "chunks": n, "chunkBytes": CHUNK_BYTES, "done": True, "uploadedAt": int(time.time() * 1000)})}}])
 
+    def put_meta(self, vid, meta):
+        """Create or update a video's listing fields only, leaving any uploaded video data alone.
+        A video that hasn't been uploaded gets done=False, so the site lists it as not uploaded yet."""
+        url = f"{API}/videos/{vid}"
+        exists = requests.get(url, headers=self.headers(), timeout=60).status_code == 200
+        fields = dict(meta) if exists else {**meta, "done": False}
+        mask = "&".join(f"updateMask.fieldPaths={k}" for k in fields)
+        self.call("PATCH", f"{url}?{mask}", data=json.dumps({"fields": encode(fields)}))
+
     def delete(self, vid, log=print):
         doc = self.call("GET", f"{API}/videos/{vid}")
-        n = int(doc["fields"]["chunks"]["integerValue"])
+        n = int(doc["fields"].get("chunks", {}).get("integerValue", 0))
         names = [f"{DOCS}/videos/{vid}/chunks/{i:05d}" for i in range(n)]
-        for i in range(0, len(names), 400):
-            self.commit([{"delete": x} for x in names[i:i + 400]])
+        # A commit is capped at 10 MiB including the size of the documents it deletes, so delete
+        # 1 MB chunks a few at a time.
+        for i in range(0, len(names), 8):
+            self.commit([{"delete": x} for x in names[i:i + 8]])
         self.commit([{"delete": f"{DOCS}/videos/{vid}"}])
         log(f"  deleted {vid} ({n} chunks)")
 

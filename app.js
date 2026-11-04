@@ -1,9 +1,11 @@
 // Lectures: watch Echo360 lecture recordings downloaded from Learn.UQ by tools/get.py.
-// Google sign-in (Firebase Auth) + Firestore, no billing. Only Alex can read anything
+// Google sign-in (Firebase Auth) + Firestore. Only Sophie and Alex can read anything
 // (firestore.rules). Data:
-//   videos/{id}               { course, kind, title, echoTitle, page, where, date, start, duration,
-//                               width, height, layout: "single"|"dual", mime, size, chunks,
-//                               chunkBytes, times: [...], offsets: [...], done, uploadedAt }
+//   videos/{id}               { course, courseName, kind, title, echoTitle, page, where, date, start,
+//                               order, key, done, and once uploaded: duration, width, height,
+//                               layout: "single"|"dual", mime, size, chunks, chunkBytes, times: [...],
+//                               offsets: [...], uploadedAt }
+//                             done: false = listed but not uploaded yet (shown greyed out).
 //   videos/{id}/chunks/{i}    { d: Bytes }  i = "00000", "00001", …  (1 MB pieces of the MP4)
 //   users/{uid}               { progress: { videoId: { pos, done, t } } }
 // The videos are written by tools/get.py (as Alex, through the REST API); the site only reads
@@ -14,7 +16,7 @@ import {
   signInWithPopup, signOut,
 } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
 import {
-  getFirestore, collection, doc, query, where, getDocs, getDoc, setDoc, onSnapshot,
+  getFirestore, collection, doc, getDocs, getDoc, setDoc, onSnapshot,
 } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
 import { Streamer, mseSupported, typeSupported } from "./stream.js";
 import { VERSION } from "./version.js";
@@ -135,7 +137,7 @@ function gate(msg) {
 
 function route() {
   const id = new URLSearchParams(location.hash.slice(1)).get("v");
-  const v = id && videos.find((x) => x.id === id);
+  const v = id && videos.find((x) => x.id === id && x.done === true);
   if (v) openVideo(v);
   else { closeVideo(); renderList(); show("list-view"); $("title").textContent = "Lectures"; document.title = "Lectures"; }
 }
@@ -158,7 +160,7 @@ function renderList() {
   if (!cs.includes(course)) course = cs[0] || "";
   const tabs = $("course-tabs");
   tabs.replaceChildren(...cs.map((c) => {
-    const b = el("button", { type: "button", textContent: c });
+    const b = el("button", { type: "button", textContent: c, title: videos.find((v) => v.course === c)?.courseName || c });
     b.setAttribute("aria-pressed", String(c === course));
     b.onclick = () => { course = c; localStorage.setItem(KEY + "course", c); renderList(); };
     return b;
@@ -171,31 +173,43 @@ function renderList() {
   }
   const mine = videos.filter((v) => v.course === course);
   const recordings = mine.filter((v) => v.kind === "recording").sort((a, b) => (a.start || a.date).localeCompare(b.start || b.date));
-  const pages = mine.filter((v) => v.kind !== "recording")
-    .sort((a, b) => (a.where + a.page).localeCompare(b.where + b.page, undefined, { numeric: true }) || a.title.localeCompare(b.title, undefined, { numeric: true }));
+  // Videos on course pages, in Learn.UQ's order, grouped by the folder they're in.
+  const pages = mine.filter((v) => v.kind !== "recording").sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   const latest = lastWatched(mine);
   const row = (v, n) => {
     const p = Progress.get(v.id);
-    const pct = p.done ? 100 : Math.min(100, (p.pos / v.duration) * 100);
-    const title = v.kind === "recording" ? `Lecture ${n} · ${fmtDate(v.start || v.date)}` : v.title;
+    const ready = v.done === true;
+    const pct = !ready ? 0 : p.done ? 100 : Math.min(100, (p.pos / v.duration) * 100);
+    const date = fmtDate(v.start || v.date);
+    const title = v.kind === "recording" ? (v.title || `Lecture ${n}`) : v.title;
     const meta = [];
     if (v === latest) meta.push(el("span", { class: "last-tag", textContent: "Last watched" }));
-    if (v.kind !== "recording" && v.page && v.page !== v.title) meta.push(el("span", { textContent: v.page }));
-    meta.push(el("span", { textContent: fmtLength(v.duration) }));
-    if (p.done) meta.push(el("span", { class: "done-tag", textContent: "✓ Watched" }));
+    if (v.kind === "recording" && date) meta.push(el("span", { textContent: date }));
+    if (v.kind !== "recording" && v.page && v.page !== v.title && v.page !== v.where.split(" / ").pop()) meta.push(el("span", { textContent: v.page }));
+    if (ready && v.duration) meta.push(el("span", { textContent: fmtLength(v.duration) }));
+    if (!ready) meta.push(el("span", { class: "missing-tag", textContent: "Not uploaded yet" }));
+    else if (p.done) meta.push(el("span", { class: "done-tag", textContent: "✓ Watched" }));
     else if (p.pos > 5) meta.push(el("span", { textContent: `${fmtTime(p.pos)} watched` }));
-    const b = el("button", { type: "button" },
+    const b = el("button", { type: "button", disabled: !ready },
       el("span", { class: "row-title", textContent: title }),
       el("span", { class: "row-meta" }, ...meta),
       pct > 0 ? el("span", { class: "row-bar" }, el("i", { style: `width:${pct}%` })) : null);
-    b.onclick = () => { location.hash = `v=${encodeURIComponent(v.id)}`; };
-    return el("li", { class: p.done ? "done" : "" }, b);
+    if (ready) b.onclick = () => { location.hash = `v=${encodeURIComponent(v.id)}`; };
+    return el("li", { class: [p.done && ready ? "done" : "", ready ? "" : "missing"].join(" ").trim() }, b);
   };
   const parts = [];
   if (recordings.length) parts.push(el("h2", { textContent: "Lecture recordings" }), el("ul", {}, ...recordings.map((v, i) => row(v, i + 1))));
-  if (pages.length) parts.push(el("h2", { textContent: "Videos on course pages" }), el("ul", {}, ...pages.map((v) => row(v))));
-  if (!parts.length) parts.push(el("p", { class: "empty", textContent: `No ${course} videos uploaded yet.` }));
+  const groups = new Map();
+  for (const v of pages) {
+    const g = v.where || "Course pages";
+    if (!groups.has(g)) groups.set(g, []);
+    groups.get(g).push(v);
+  }
+  for (const [g, vs] of groups) parts.push(el("h2", { textContent: g }), el("ul", {}, ...vs.map((v) => row(v))));
+  if (!parts.length) parts.push(el("p", { class: "empty", textContent: `No ${course} videos yet.` }));
   list.replaceChildren(...parts);
+  const ready = mine.filter((v) => v.done === true).length;
+  $("list-status").textContent = ready < mine.length ? `${ready} of ${mine.length} videos uploaded so far.` : "";
 }
 
 // ---------- player ----------
@@ -226,7 +240,7 @@ function openVideo(v) {
   closeVideo();
   current = v;
   show("player-view");
-  const title = v.kind === "recording" ? `${v.course} lecture · ${fmtDate(v.start || v.date)}` : v.title;
+  const title = v.kind === "recording" ? [v.title || `${v.course} lecture`, fmtDate(v.start || v.date)].filter(Boolean).join(" · ") : v.title;
   $("title").textContent = title;
   document.title = title;
   $("layout").hidden = v.layout !== "dual";
@@ -398,7 +412,8 @@ $("signin").onclick = () => signInWithPopup(auth, new GoogleAuthProvider()).catc
 $("signout").onclick = async () => { await Progress.flush(); await signOut(auth); location.hash = ""; location.reload(); };
 
 async function loadVideos() {
-  const snap = await getDocs(query(collection(db, "videos"), where("done", "==", true)));
+  // Every listed video, including ones not uploaded yet (done: false), which show greyed out.
+  const snap = await getDocs(collection(db, "videos"));
   videos = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
 
@@ -409,7 +424,7 @@ onAuthStateChanged(auth, async (user) => {
     await loadVideos();
   } catch (e) {
     if (e.code === "permission-denied") {
-      gate(`${user.email} can't use this site. It's only for Alex.`);
+      gate(`${user.email} doesn't have access to this site.`);
       $("signout").hidden = false;
       return;
     }
