@@ -67,6 +67,27 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 .tabs button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: white; }
 #list-status:empty { display: none; }
 
+/* Collapsible folders (nested like Learn.UQ's). */
+.folder { border-bottom: 1px solid var(--line); }
+.folder > summary {
+  display: flex; align-items: baseline; gap: 0.6rem; padding: 0.7rem 0.2rem; cursor: pointer;
+  list-style: none; font-weight: 600;
+}
+.folder > summary::-webkit-details-marker { display: none; }
+.folder > summary::before {
+  content: ""; flex: none; width: 0.45rem; height: 0.45rem; margin-right: 0.15rem;
+  border-right: 2px solid currentColor; border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg); transition: transform 0.15s; position: relative; top: -0.1rem;
+}
+.folder[open] > summary::before { transform: rotate(45deg); }
+.folder > summary:hover { background: var(--card); }
+.folder-name { min-width: 0; overflow-wrap: anywhere; }
+.folder-count { margin-left: auto; flex: none; font-weight: 400; font-size: 0.8rem; color: var(--muted); }
+.folder > ul, .folder > .folder, .folder > ul.loose { margin-left: 1.1rem; }
+.folder .folder:last-child { border-bottom: none; }
+#list ul.loose li:last-child button { border-bottom: 1px solid var(--line); }
+.folder ul li:last-child button { border-bottom: none; }
+
 /* Video list */
 #list h2 { font-size: 0.95rem; margin: 1.2rem 0 0.3rem; color: var(--muted); font-weight: 600; overflow-wrap: anywhere; }
 #list ul { list-style: none; margin: 0; padding: 0; }

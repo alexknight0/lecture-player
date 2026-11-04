@@ -53,6 +53,14 @@ let userUnsub = null;
 
 // ---------- helpers ----------
 
+// Page title and video title that say the same thing (e.g. "Knee ROM" vs "PHTY1200_Knee ROM").
+function similar(a, b) {
+  const norm = (s) => s.toLowerCase().replace(/^[a-z]{4}\d{4}[_\s-]*/, "").replace(/[^a-z0-9]+/g, " ").trim();
+  const x = norm(a);
+  const y = norm(b);
+  return x === y || x.includes(y) || y.includes(x);
+}
+
 function el(tag, props = {}, ...children) {
   const e = document.createElement(tag);
   for (const [k, v] of Object.entries(props)) {
@@ -185,7 +193,7 @@ function renderList() {
     const meta = [];
     if (v === latest) meta.push(el("span", { class: "last-tag", textContent: "Last watched" }));
     if (v.kind === "recording" && date) meta.push(el("span", { textContent: date }));
-    if (v.kind !== "recording" && v.page && v.page !== v.title && v.page !== v.where.split(" / ").pop()) meta.push(el("span", { textContent: v.page }));
+    if (v.kind !== "recording" && v.page && !similar(v.page, v.title)) meta.push(el("span", { textContent: v.page }));
     if (ready && v.duration) meta.push(el("span", { textContent: fmtLength(v.duration) }));
     if (!ready) meta.push(el("span", { class: "missing-tag", textContent: "Not uploaded yet" }));
     else if (p.done) meta.push(el("span", { class: "done-tag", textContent: "✓ Watched" }));
@@ -198,18 +206,97 @@ function renderList() {
     return el("li", { class: [p.done && ready ? "done" : "", ready ? "" : "missing"].join(" ").trim() }, b);
   };
   const parts = [];
-  if (recordings.length) parts.push(el("h2", { textContent: "Lecture recordings" }), el("ul", {}, ...recordings.map((v, i) => row(v, i + 1))));
-  const groups = new Map();
-  for (const v of pages) {
-    const g = v.where || "Course pages";
-    if (!groups.has(g)) groups.set(g, []);
-    groups.get(g).push(v);
+  if (recordings.length) {
+    parts.push(folder(`${course}|rec`, "Lecture recordings", recordings.map((v, i) => row(v, i + 1)), recordings, true));
   }
-  for (const [g, vs] of groups) parts.push(el("h2", { textContent: g }), el("ul", {}, ...vs.map((v) => row(v))));
+  parts.push(...renderTree(buildTree(pages), row, latest));
   if (!parts.length) parts.push(el("p", { class: "empty", textContent: `No ${course} videos yet.` }));
   list.replaceChildren(...parts);
   const ready = mine.filter((v) => v.done === true).length;
   $("list-status").textContent = ready < mine.length ? `${ready} of ${mine.length} videos uploaded so far.` : "";
+}
+
+// ---------- folders (collapsible, nested like Learn.UQ's) ----------
+
+// Tree of {name, path, folders: Map, videos: []} from each video's `where` ("A / B / C").
+function buildTree(vs) {
+  const root = { name: "", path: "", folders: new Map(), videos: [] };
+  for (const v of vs) {
+    let node = root;
+    for (const seg of (v.where ? v.where.split(" / ") : [])) {
+      if (!node.folders.has(seg)) node.folders.set(seg, { name: seg, path: node.path ? `${node.path} / ${seg}` : seg, folders: new Map(), videos: [] });
+      node = node.folders.get(seg);
+    }
+    node.videos.push(v);
+  }
+  simplify(root);
+  return root;
+}
+
+// Most videos sit alone in their own folder (the folder is their page): show those videos
+// directly in the parent, and merge chains of folders that only contain one folder.
+function simplify(node) {
+  for (const [key, f] of [...node.folders]) {
+    simplify(f);
+    if (f.folders.size === 0 && f.videos.length === 1) {
+      node.folders.delete(key);
+      node.videos.push(f.videos[0]);
+    } else if (f.videos.length === 0 && f.folders.size === 1) {
+      const [only] = f.folders.values();
+      node.folders.delete(key);
+      node.folders.set(key, { ...only, name: `${f.name} / ${only.name}` });
+    }
+  }
+  node.videos.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+}
+
+function allVideos(node) {
+  return [...node.videos, ...[...node.folders.values()].flatMap(allVideos)];
+}
+
+function firstOrder(node) {
+  return Math.min(...allVideos(node).map((v) => v.order ?? 0));
+}
+
+// Folders and videos of one level, in Learn.UQ's order.
+function renderTree(node, row, latest) {
+  const items = [
+    ...node.videos.map((v) => ({ order: v.order ?? 0, el: () => el("ul", { class: "loose" }, row(v)) })),
+    ...[...node.folders.values()].map((f) => ({
+      order: firstOrder(f),
+      el: () => folder(`${course}|${f.path}`, f.name, renderTree(f, row, latest), allVideos(f), allVideos(f).includes(latest)),
+    })),
+  ].sort((a, b) => a.order - b.order);
+  // Consecutive loose videos go in one list.
+  const out = [];
+  for (const it of items) {
+    const e = it.el();
+    const prev = out[out.length - 1];
+    if (e.classList.contains("loose") && prev && prev.classList.contains("loose")) prev.append(...e.childNodes);
+    else out.push(e);
+  }
+  return out;
+}
+
+// Folder open/closed state, remembered per folder once she opens or closes it. Until then:
+// Lecture recordings start open, and so does the folder holding the last-watched video.
+const folderState = JSON.parse(localStorage.getItem(KEY + "folders") || "{}");
+
+function folder(id, name, children, vs, openByDefault) {
+  const watched = vs.filter((v) => Progress.get(v.id).done).length;
+  const count = [`${vs.length} video${vs.length === 1 ? "" : "s"}`];
+  if (watched) count.push(`${watched} watched`);
+  const rows = children.filter((c) => c.tagName === "LI");
+  const rest = children.filter((c) => c.tagName !== "LI");
+  const summary = el("summary", {}, el("span", { class: "folder-name", textContent: name }), el("span", { class: "folder-count", textContent: count.join(" · ") }));
+  const d = el("details", { class: "folder", open: folderState[id] ?? Boolean(openByDefault) }, summary,
+    rows.length ? el("ul", {}, ...rows) : null, ...rest);
+  // Remember only what she chooses (a "toggle" listener would also fire for the default state).
+  summary.addEventListener("click", () => setTimeout(() => {
+    folderState[id] = d.open;
+    localStorage.setItem(KEY + "folders", JSON.stringify(folderState));
+  }));
+  return d;
 }
 
 // ---------- player ----------
@@ -255,7 +342,8 @@ function openVideo(v) {
   }
   $("spinner").hidden = false;
   const read = async (n) => {
-    const snap = await getDoc(doc(db, "videos", v.id, "chunks", String(n).padStart(5, "0")));
+    // A video linked from two pages is stored once; the second listing points at it (chunksFrom).
+    const snap = await getDoc(doc(db, "videos", v.chunksFrom || v.id, "chunks", String(n).padStart(5, "0")));
     if (!snap.exists()) throw new Error(`Part ${n} of this video is missing.`);
     return snap.data().d.toUint8Array();
   };

@@ -65,8 +65,21 @@ class Store:
             if not token:
                 return out
 
+    PLAYBACK = ("duration", "width", "height", "layout", "mime", "size", "chunks", "chunkBytes", "times",
+                "offsets", "uploadedAt")
+
+    def link_same(self, vid, other_vid, meta):
+        """List vid as its own entry but play other_vid's chunks (same video on two pages)."""
+        other = decode(self.call("GET", f"{API}/videos/{other_vid}")["fields"])
+        if not other.get("done"):
+            raise RuntimeError(f"{other_vid} isn't fully uploaded")
+        fields = {**meta, **{k: other[k] for k in self.PLAYBACK if k in other}, "chunksFrom": other_vid, "done": True}
+        mask = "&".join(f"updateMask.fieldPaths={k}" for k in fields)
+        self.call("PATCH", f"{API}/videos/{vid}?{mask}", data=json.dumps({"fields": encode(fields)}))
+
     def used_bytes(self):
-        return sum(v.get("size", 0) for v in self.videos().values())
+        # Videos sharing another's chunks (chunksFrom) don't take extra space.
+        return sum(v.get("size", 0) for v in self.videos().values() if v.get("done") and not v.get("chunksFrom"))
 
     def upload(self, vid, path, meta, log=print):
         """Upload a processed MP4 as videos/{vid} + chunks. The doc is written last with done=True,

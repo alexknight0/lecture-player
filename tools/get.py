@@ -93,11 +93,11 @@ def process(v, files, out, log=print):
     a = audio_files[0]
     frag = ["-movflags", "+frag_keyframe+empty_moov+default_base_moof"]
     if len(video_files) == 1:
-        cmd = ["ffmpeg", "-y", "-v", "error", "-stats", "-i", str(video_files[0]), "-i", str(a),
+        cmd = ["ffmpeg", "-y", "-v", "error", "-nostats", "-i", str(video_files[0]), "-i", str(a),
                "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy", "-c:a", "aac", "-b:a", "96k", *frag, str(out)]
         kind = "single"
     else:
-        cmd = ["ffmpeg", "-y", "-v", "error", "-stats", "-i", str(video_files[0]), "-i", str(video_files[1]), "-i", str(a),
+        cmd = ["ffmpeg", "-y", "-v", "error", "-nostats", "-i", str(video_files[0]), "-i", str(video_files[1]), "-i", str(a),
                "-filter_complex", "[0:v]scale=-2:720,setsar=1,fps=25[l];[1:v]scale=-2:720,setsar=1,fps=25[r];[l][r]hstack[v]",
                "-map", "[v]", "-map", "2:a:0", "-c:v", "libx264", "-preset", "veryfast", "-crf", "28",
                "-g", "250", "-pix_fmt", "yuv420p",
@@ -108,8 +108,17 @@ def process(v, files, out, log=print):
     return kind
 
 
-def fetch(b, v, log=print):
-    """Download and process one catalog entry. Returns the processed file path."""
+class SameVideo(Exception):
+    """This catalog entry is a video that's already uploaded under another entry."""
+    def __init__(self, other):
+        super().__init__(other["key"])
+        self.other = other
+
+
+def fetch(b, v, log=print, uploaded_media=None):
+    """Download and process one catalog entry. Returns the processed file path.
+    uploaded_media maps Echo360 media ids to catalog entries already uploaded; if this entry is
+    one of those videos (the same video linked from two pages), SameVideo is raised instead."""
     vid = video_id(v)
     d = VIDEOS / vid
     d.mkdir(parents=True, exist_ok=True)
@@ -119,6 +128,10 @@ def fetch(b, v, log=print):
         return out
     log("  opening the player…")
     cap = capture(b.context, v["launch"])
+    v["mediaId"] = cap.base.split("/")[-2]
+    other = (uploaded_media or {}).get(v["mediaId"])
+    if other is not None and other is not v:
+        raise SameVideo(other)
     src = cap.sources()
     names = [n for n in [src["audio"], *src["video"]] if n]
     log(f"  sources: {', '.join(names)}")
@@ -200,33 +213,62 @@ def main():
     if used is not None:
         print(f"Database: {used / 1e6:.0f} MB of {QUOTA_BYTES / 1e6:.0f} MB used", flush=True)
     b = Browser()
+    uploaded_media = {v["mediaId"]: v for v in vids if v.get("uploaded") and v.get("mediaId")}
+    counts = {"uploaded": 0, "same": 0, "failed": 0, "skipped": 0}
     try:
         for i, v in enumerate(chosen, 1):
             print(f"{i}/{len(chosen)}: {label(v)}", flush=True)
             if v.get("duplicateOf"):
                 print("  same video as another entry; skipped")
+                counts["skipped"] += 1
                 continue
-            path = fetch(b, v, log=lambda s: print(s, flush=True))
+            try:
+                path = fetch(b, v, log=lambda s: print(s, flush=True), uploaded_media=uploaded_media)
+            except SameVideo as s:
+                # The same Echo360 video linked from another page: list it, but play the other copy.
+                store.link_same(video_id(v), video_id(s.other), listing(v, vids.index(v), names))
+                v["uploaded"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+                v["sameAs"] = s.other["key"]
+                print(f"  same video as {s.other['key']} (already uploaded); listed, not stored twice", flush=True)
+                counts["same"] += 1
+                save(cat)
+                continue
+            except Exception as e:
+                # Keep going so one bad video doesn't stop a long run; rerun later to retry.
+                print(f"  FAILED: {str(e).splitlines()[0][:200]}", flush=True)
+                counts["failed"] += 1
+                continue
             save(cat)
             v["file"] = str(path)
             if args.no_upload:
                 continue
             kind = "dual" if len([n for n in path.parent.iterdir() if re.match(r"s[1-9]q\d\.mp4", n.name)]) > 1 else "single"
-            meta = meta_for(v, path, kind, listing(v, vids.index(v), names))
-            size = path.stat().st_size
-            if used + size > QUOTA_BYTES:
-                print(f"  not uploaded: {size / 1e6:.0f} MB would go over the {QUOTA_BYTES / 1e9:.0f} GB safety limit "
-                      f"({used / 1e6:.0f} MB used). Raise it with LP_LIMIT_GB=<n> or delete something with --delete.")
+            try:
+                meta = meta_for(v, path, kind, listing(v, vids.index(v), names))
+                size = path.stat().st_size
+                if used + size > QUOTA_BYTES:
+                    print(f"  not uploaded: {size / 1e6:.0f} MB would go over the {QUOTA_BYTES / 1e9:.0f} GB safety limit "
+                          f"({used / 1e6:.0f} MB used). Raise it with LP_LIMIT_GB=<n> or delete something with --delete.")
+                    counts["skipped"] += 1
+                    continue
+                print(f"  uploading {size / 1e6:.0f} MB…", flush=True)
+                store.upload(video_id(v), path, meta, log=lambda s: print(s, flush=True))
+            except Exception as e:
+                print(f"  FAILED: {str(e).splitlines()[0][:200]}", flush=True)
+                counts["failed"] += 1
                 continue
-            print(f"  uploading {size / 1e6:.0f} MB…", flush=True)
-            store.upload(video_id(v), path, meta, log=lambda s: print(s, flush=True))
             used += size
             v["uploaded"] = time.strftime("%Y-%m-%dT%H:%M:%S")
             v["videoId"] = video_id(v)
+            if v.get("mediaId"):
+                uploaded_media[v["mediaId"]] = v
+            counts["uploaded"] += 1
             save(cat)
     finally:
         b.close()
         save(cat)
+        print(f"\nDone: {counts['uploaded']} uploaded, {counts['same']} repeats of uploaded videos, "
+              f"{counts['failed']} failed, {counts['skipped']} skipped. Database: {(used or 0) / 1e9:.2f} GB", flush=True)
 
 
 if __name__ == "__main__":
