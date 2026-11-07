@@ -4,7 +4,10 @@ Usage:
   scan.py                      scan the courses in courses.txt (or this semester's if it's empty)
   scan.py _207591_1 ...        scan these course ids (or Learn.UQ course URLs)
   scan.py --verify             also open every video's player to check it can be downloaded
+  scan.py --playlists          also open every link/embed; a link to an Echo360 playlist becomes
+                               one entry per item, listed in a folder named after the link
 
+Scanning only some courses keeps the other courses' entries in the catalog.
 Writes ~/.lecture-player/catalog.json. Kinds of video found:
   recording  a lesson in the course's Echo360 "Lecture Recordings" section
   embed      an Echo360 secure link embedded in a Learn.UQ page
@@ -235,11 +238,104 @@ def scan(b, courses, log=print):
     return unique, problems
 
 
+def open_link(b, v, timeout=60):
+    """Open a link/embed's launch URL and return (page, Echo360 frame) once the player or
+    playlist page has loaded. The caller closes the page."""
+    page = b.context.new_page()
+    try:
+        page.goto(v["launch"], wait_until="domcontentloaded", timeout=timeout * 1000)
+    except Exception as e:
+        if "ERR_ABORTED" not in str(e):
+            page.close()
+            raise
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        f = next((f for f in page.frames if re.search(r"echo360\.net\.au/ui/(player|playlist)/", f.url)), None)
+        if f:
+            return page, f
+        time.sleep(0.5)
+    urls = [f.url[:80] for f in page.frames]
+    page.close()
+    raise RuntimeError(f"no Echo360 player opened (frames: {urls})")
+
+
+def playlist_media(b, v, attempts=3):
+    """If a link/embed opens an Echo360 playlist, return (playlist, [media]); else None.
+    A playlist page is echo360.net.au/ui/playlist/<id>; its items come from
+    /playlist/media/getAllMedia/<id> (in order, with names and durations)."""
+    for n in range(attempts):
+        try:
+            page, f = open_link(b, v)
+            break
+        except Exception:
+            if n == attempts - 1:
+                raise
+            time.sleep(3)
+    try:
+        if "/ui/playlist/" not in f.url:
+            return None
+        pid = f.url.split("/ui/playlist/")[1].split("?")[0]
+        res = f.evaluate("""async u => { const r = await fetch(u, {credentials: 'include', headers: {Accept: 'application/json'}});
+            return [r.status, await r.text()]; }""", f"/playlist/media/getAllMedia/{pid}")
+        if res[0] != 200:
+            raise RuntimeError(f"playlist {pid}: HTTP {res[0]}")
+        d = json.loads(res[1])["data"]
+        by_id = {m["id"]: m for m in d["media"]}
+        items = [by_id[m["mediaId"]] for m in sorted(d["playlist"]["playlistMedia"], key=lambda m: m["mediaOrder"])
+                 if m["mediaId"] in by_id and m.get("mediaType") in ("Video", "Audio")]
+        return d["playlist"], items
+    finally:
+        page.close()
+
+
+def expand_playlists(b, videos, old, log=print):
+    """Replace every link/embed that opens an Echo360 playlist with one entry per playlist item.
+    The item that was downloaded before (old entry's mediaId, else the first) keeps the link's
+    key, so its upload and watch progress stay; the others get key '<link key>:<media id>'.
+    Results are kept in the catalog (playlistChecked), so a rescan only opens new links."""
+    out = []
+    todo = [v for v in videos if v["kind"] in ("link", "embed")]
+    n = 0
+    for v in videos:
+        if v["kind"] not in ("link", "embed"):
+            out.append(v)
+            continue
+        n += 1
+        prev = old.get(v["key"], {})
+        if prev.get("playlistChecked") and not prev.get("playlistId"):
+            v["playlistChecked"] = prev["playlistChecked"]
+            out.append(v)
+            continue
+        try:
+            found = playlist_media(b, v)
+        except Exception as e:
+            log(f"{n}/{len(todo)}: FAIL {v['course']} {v['title'][:60]}: {str(e)[:150]}")
+            out.append(v)
+            continue
+        v["playlistChecked"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+        if not found:
+            log(f"{n}/{len(todo)}: video     {v['course']} {v['title'][:60]}")
+            out.append(v)
+            continue
+        pl, items = found
+        log(f"{n}/{len(todo)}: playlist  {v['course']} {v['title'][:60]}: {len(items)} items")
+        keep = prev.get("mediaId") if prev.get("mediaId") in {m["id"] for m in items} else (items[0]["id"] if items else None)
+        for i, m in enumerate(items):
+            dur = re.match(r"PT([\d.]+)S", (m.get("media", {}).get("current", {}) or {}).get("duration") or "")
+            out.append({**v, "key": v["key"] if m["id"] == keep else f"{v['key']}:{m['id']}",
+                        "title": m.get("name") or f"Part {i + 1}", "page": v["title"],
+                        "where": f"{v['where']} / {v['title']}" if v["where"] else v["title"],
+                        "playlistId": pl["playlistId"], "playlistTitle": pl.get("title") or v["title"],
+                        "playlistIndex": i, "playlistMedia": m["id"], "mediaId": m["id"],
+                        "echoTitle": m.get("name"), **({"duration": float(dur.group(1))} if dur else {})})
+    return out
+
+
 def verify(b, videos, log=print):
     """Open every video's player and record its Echo360 media id, size and duration."""
     for i, v in enumerate(videos, 1):
         try:
-            cap = capture(b.context, v["launch"])
+            cap = capture(b.context, v["launch"], media=v.get("playlistMedia"))
             src = cap.sources()
             names = [src["audio"], *src["video"]]
             v["mediaId"] = cap.base.split("/")[-2]
@@ -268,6 +364,8 @@ def main():
     ap.add_argument("courses", nargs="*", help="Learn.UQ course ids or URLs")
     ap.add_argument("--verify", action="store_true", help="open every player to check it can be downloaded")
     ap.add_argument("--recheck", action="store_true", help="verify again only the catalog entries that failed")
+    ap.add_argument("--playlists", action="store_true",
+                    help="open every link/embed to find Echo360 playlists and list each item (≈3 s per new link)")
     args = ap.parse_args()
     if args.recheck:
         cat = json.loads(CATALOG.read_text())
@@ -286,21 +384,28 @@ def main():
         wanted = [parse_course_arg(l.strip()) for l in COURSES_FILE.read_text().splitlines()
                   if l.strip() and not l.strip().startswith("#")]
     b = Browser()
+    old_cat = json.loads(CATALOG.read_text()) if CATALOG.exists() else {}
+    old = {v["key"]: v for v in old_cat.get("videos", [])}
     try:
         courses = list_courses(b, wanted)
         print("Courses:", ", ".join(f"{c['code']} ({c['id']})" for c in courses), flush=True)
         videos, problems = scan(b, courses, log=lambda s: print(s, flush=True))
+        if args.playlists:
+            print("Looking for playlists…", flush=True)
+            videos = expand_playlists(b, videos, old, log=lambda s: print(s, flush=True))
         if args.verify:
             verify(b, videos, log=lambda s: print(s, flush=True))
     finally:
         b.close()
-    old = {}
-    if CATALOG.exists():
-        old = {v["key"]: v for v in json.loads(CATALOG.read_text()).get("videos", [])}
     for v in videos:  # keep download/upload state from earlier runs
-        for k in ("file", "uploaded", "videoId"):
-            if k in old.get(v["key"], {}):
+        for k in ("file", "uploaded", "videoId", "mediaId", "echoTitle", "sameAs", "bytes", "sources"):
+            if k in old.get(v["key"], {}) and k not in v:
                 v[k] = old[v["key"]][k]
+    # Scanning some courses keeps the other courses' entries (in front, as before).
+    scanned = {c["code"] for c in courses}
+    videos = [v for v in old_cat.get("videos", []) if v["course"] not in scanned] + videos
+    problems = [p for p in old_cat.get("unrecognised", []) if p["course"] not in scanned] + problems
+    courses = [c for c in old_cat.get("courses", []) if c["code"] not in scanned] + courses
     HOME.mkdir(exist_ok=True)
     CATALOG.write_text(json.dumps({"scanned": time.strftime("%Y-%m-%dT%H:%M:%S"), "courses": courses,
                                    "videos": videos, "unrecognised": problems}, indent=1))

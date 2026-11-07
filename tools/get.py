@@ -136,7 +136,7 @@ def fetch(b, v, log=print, uploaded_media=None):
         log("  already downloaded")
         return out
     log("  opening the player…")
-    cap = capture(b.context, v["launch"])
+    cap = capture(b.context, v["launch"], media=v.get("playlistMedia"))
     v["mediaId"] = cap.base.split("/")[-2]
     other = (uploaded_media or {}).get(v["mediaId"])
     if other is not None and other is not v:

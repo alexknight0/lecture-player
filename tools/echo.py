@@ -12,6 +12,7 @@ the browser: the first request the player makes to content.echo360.net.au.
 """
 import re
 import time
+from urllib.parse import parse_qs, parse_qsl, urlencode, urlsplit, urlunsplit
 
 import requests
 
@@ -97,13 +98,22 @@ def _cookies(context):
     return {c["name"]: c["value"] for c in context.cookies("https://content.echo360.net.au/")}
 
 
-def capture(context, url, timeout=60, attempts=3):
+def playlist_url(url, media):
+    """The same Echo360 playlist page with another item selected."""
+    s = urlsplit(url)
+    q = [(k, v) for k, v in parse_qsl(s.query) if k != "currentMediaId"] + [("currentMediaId", media)]
+    return urlunsplit(s._replace(query=urlencode(q)))
+
+
+def capture(context, url, timeout=60, attempts=3, media=None):
     """Open an Echo360 player page (or anything that launches one), start playback,
     and return a Capture for its streams. Retries, because Learn.UQ/Echo360 pages
-    sometimes abort the first navigation."""
+    sometimes abort the first navigation.
+    media: for a link that opens a playlist (echo360.net.au/ui/playlist/…), the Echo360
+    media id of the item to capture; the playlist page is reopened with that item selected."""
     for n in range(attempts):
         try:
-            return _capture(context, url, timeout)
+            return _capture(context, url, timeout, media)
         except Exception as e:
             if n == attempts - 1:
                 raise
@@ -111,14 +121,16 @@ def capture(context, url, timeout=60, attempts=3):
             time.sleep(3)
 
 
-def _capture(context, url, timeout):
+def _capture(context, url, timeout, media=None):
     page = context.new_page()
     hits = []
-    page.on("request", lambda r: hits.append(r.url) if CONTENT in r.url and (".m3u8" in r.url or ".mp4" in r.url) else None)
+    # With media set, only that item's streams count (a playlist first loads its current item).
+    page.on("request", lambda r: hits.append(r.url) if CONTENT in r.url and (".m3u8" in r.url or ".mp4" in r.url)
+            and (not media or f"/{media}/" in r.url) else None)
     info = {}
 
     def on_resp(r):
-        if "player-properties" in r.url and r.status == 200:
+        if "player-properties" in r.url and r.status == 200 and (not media or f"/{media}/" in r.url):
             try:
                 info["props"] = r.json()["data"]
             except Exception:
@@ -133,8 +145,15 @@ def _capture(context, url, timeout):
             if "ERR_ABORTED" not in str(e):
                 raise
         deadline = time.time() + timeout
+        switched = not media
         while not hits and time.time() < deadline:
             time.sleep(1)
+            if not switched:
+                pl = next((f for f in page.frames if "echo360.net.au/ui/playlist/" in f.url), None)
+                if pl:
+                    switched = True
+                    if parse_qs(urlsplit(pl.url).query).get("currentMediaId") != [media]:
+                        pl.goto(playlist_url(pl.url, media), wait_until="domcontentloaded")
             for f in page.frames:
                 if "echo360.net.au" not in f.url:
                     continue
