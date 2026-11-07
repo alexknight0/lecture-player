@@ -1,13 +1,26 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Sophie (the site is hers; the videos come from her own Learn.UQ account) and Alex (who
-    // develops it). UQ recordings are licensed for personal study, so nobody else.
+    // Alex (the admin, who develops it) always; everyone else only if their email (lower-case)
+    // is in config/access.emails, which only Alex can read or edit, from the Access page on
+    // /home/ (Sophie, whose site it is: the videos come from her own Learn.UQ account). UQ
+    // recordings are licensed for personal study, so keep the list to her.
     // Videos are written by tools/get.py through the REST API with Alex's gcloud credentials
     // (IAM, not these rules), so browsers never need write access to them.
+    function signedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+    function isAdmin() {
+      return signedIn() && request.auth.token.email.lower() == 'octopus0246@gmail.com';
+    }
     function allowed() {
-      return request.auth != null && request.auth.token.email_verified == true
-        && request.auth.token.email.lower() in ['erex0246@gmail.com', 'octopus0246@gmail.com'];
+      return isAdmin() || (signedIn()
+        && exists(/databases/$(database)/documents/config/access)
+        && request.auth.token.email.lower() in get(/databases/$(database)/documents/config/access).data.emails);
+    }
+
+    match /config/access {
+      allow read, write: if isAdmin();
     }
 
     match /videos/{id} {
@@ -20,6 +33,19 @@ service cloud.firestore {
     // Watch progress, one doc per person: { progress: { videoId: { pos, done, t } } }
     match /users/{uid} {
       allow read, write: if allowed() && request.auth.uid == uid;
+    }
+
+    // One Video (alexknight0.github.io/one-video/) shares this project: oneVideo/current holds
+    // its single saved video, oneVideo/current/chunks its bytes. Alex only; the browser writes it.
+    function oneVideoOwner() {
+      return request.auth != null && request.auth.token.email_verified == true
+        && request.auth.token.email.lower() == 'octopus0246@gmail.com';
+    }
+    match /oneVideo/{doc} {
+      allow read, write: if oneVideoOwner();
+      match /chunks/{chunk} {
+        allow read, write: if oneVideoOwner();
+      }
     }
   }
 }
