@@ -36,9 +36,9 @@ service cloud.firestore {
     }
 
     // One Video (alexknight0.github.io/one-video/) shares this project: oneVideo/current holds
-    // its single saved video, oneVideo/current/chunks its bytes (written by the browser). Only
-    // Alex changes it; anyone in config/access.oneVideo (its own list, so the Lectures list in
-    // .emails doesn't apply to it; edited on Home's Access page) may watch it.
+    // its saved video's details and download URL; the file itself is in Firebase Storage
+    // (storage.rules). Only Alex changes it; anyone in config/access.oneVideo (its own list, so
+    // the Lectures list in .emails doesn't apply to it; edited on Home's Access page) may watch it.
     function canWatchOneVideo() {
       return isAdmin() || (signedIn()
         && exists(/databases/$(database)/documents/config/access)
@@ -47,10 +47,6 @@ service cloud.firestore {
     match /oneVideo/{doc} {
       allow read: if canWatchOneVideo();
       allow write: if isAdmin();
-      match /chunks/{chunk} {
-        allow read: if canWatchOneVideo();
-        allow write: if isAdmin();
-      }
     }
   }
 }

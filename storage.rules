@@ -1,0 +1,25 @@
+rules_version = '2';
+// Firebase Storage for this project. Only One Video uses it (alexknight0.github.io/one-video/):
+// oneVideo/<file> is its saved video, uploaded from the browser. Only Alex may upload, read or
+// delete through the SDK. Watchers play the file through the download URL (with its token) that
+// One Video stores in Firestore oneVideo/current, which firestore.rules restrict to Alex and
+// config/access.oneVideo. Lectures still keeps its videos in Firestore, not here.
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isAdmin() {
+      return request.auth != null && request.auth.token.email_verified == true
+        && request.auth.token.email.lower() == 'octopus0246@gmail.com';
+    }
+
+    match /oneVideo/{file} {
+      allow read, delete: if isAdmin();
+      allow create, update: if isAdmin()
+        && request.resource.contentType.matches('video/.*')
+        && request.resource.size < 5 * 1024 * 1024 * 1024;
+    }
+
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}
