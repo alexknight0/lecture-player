@@ -152,7 +152,11 @@ function route() {
   const id = new URLSearchParams(location.hash.slice(1)).get("v");
   const v = id && videos.find((x) => x.id === id && x.done === true);
   if (v) openVideo(v);
-  else { closeVideo(); renderList(); show("list-view"); $("title").textContent = "Lectures"; document.title = "Lectures"; }
+  else {
+    // While the video floats in Picture in Picture, going back to the list keeps it playing.
+    if (!inPip()) closeVideo();
+    renderList(); show("list-view"); $("title").textContent = "Lectures"; document.title = "Lectures";
+  }
 }
 
 function courses() {
@@ -475,6 +479,43 @@ function fullscreen() {
   else if (video.webkitEnterFullscreen) video.webkitEnterFullscreen(); // iPhone: its own player, with its own controls
 }
 
+// ---- Picture in Picture ----
+// The standard API (requestPictureInPicture) where it exists; Safari's own
+// webkitSetPresentationMode otherwise. In PiP the system's controls are used (play/pause and
+// ±skip, from the media session handlers above); a dual video shows both cameras.
+function pipSupported() {
+  return (document.pictureInPictureEnabled && !video.disablePictureInPicture)
+    || Boolean(video.webkitSupportsPresentationMode?.("picture-in-picture"));
+}
+
+function inPip() {
+  return document.pictureInPictureElement === video || video.webkitPresentationMode === "picture-in-picture";
+}
+
+function togglePip() {
+  if (!current) return;
+  if (inPip()) {
+    if (document.pictureInPictureElement) document.exitPictureInPicture().catch(() => {});
+    else video.webkitSetPresentationMode("inline");
+  } else if (video.requestPictureInPicture && document.pictureInPictureEnabled) {
+    video.requestPictureInPicture().catch((e) => playerError(`Picture in Picture failed: ${e.message}`));
+  } else if (video.webkitSetPresentationMode) {
+    video.webkitSetPresentationMode("picture-in-picture");
+  }
+}
+
+// Leaving PiP: if the video is still playing (the "back to page" button), show its player
+// again; if it was paused or closed while the list is showing, stop it properly.
+function onPipLeave() {
+  if (!current || !$("player-view").hidden) return;
+  if (video.paused) closeVideo();
+  else location.hash = `v=${encodeURIComponent(current.id)}`;
+}
+video.addEventListener("leavepictureinpicture", onPipLeave);
+video.addEventListener("webkitpresentationmodechanged", () => { if (!inPip()) onPipLeave(); });
+$("pip").hidden = !pipSupported();
+$("pip").onclick = togglePip;
+
 // Android: turn landscape videos sideways in full screen (not supported on iPad/desktop; ignored there).
 function lockLandscape() {
   if (current && current.width > current.height) screen.orientation?.lock?.("landscape").catch(() => {});
@@ -624,6 +665,7 @@ document.addEventListener("keydown", (e) => {
   else if (e.key === "ArrowLeft" || e.key === "j") { e.preventDefault(); skip(-10); }
   else if (e.key === "ArrowRight" || e.key === "l") { e.preventDefault(); skip(10); }
   else if (e.key === "f") fullscreen();
+  else if (e.key === "p") togglePip();
   else if (e.key === "Escape" && !document.fullscreenElement) location.hash = "";
 });
 
