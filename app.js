@@ -33,6 +33,8 @@ const KEY = "lecture-player:"; // localStorage prefix (all of Alex's sites share
 const DONE_WITHIN = 60;        // seconds from the end that count as watched
 const PUSH_DELAY = 15000;      // debounce for saving progress to Firestore
 const SPEEDS = [1, 1.25, 1.5, 1.75, 2];
+const CHUNK_TIMEOUT = 8000;    // ms before a chunk read through the Firestore SDK is given up on
+const START_TIMEOUT = 30000;   // ms before a video that hasn't started is set up again
 
 // Row icons (static strings, no user data).
 const ICON_PLAY = '<svg viewBox="0 0 24 24"><path d="M9 6.5v11l9-5.5z" fill="currentColor"/></svg>';
@@ -373,26 +375,92 @@ function openVideo(v) {
     return;
   }
   $("spinner").hidden = false;
-  const read = async (n) => {
-    // A video linked from two pages is stored once; the second listing points at it (chunksFrom).
-    const snap = await getDoc(doc(db, "videos", v.chunksFrom || v.id, "chunks", String(n).padStart(5, "0")));
-    if (!snap.exists()) throw new Error(`Part ${n} of this video is missing.`);
-    return snap.data().d.toUint8Array();
-  };
+  const read = (n) => readChunk(v.chunksFrom || v.id, n);
+  startStreamer(v, read, title, true);
+}
+
+// Reads chunk n of a video. After a tab has sat in the background for a while, the Firestore
+// SDK's connection can go stale and getDoc then waits a long time without failing; reopening
+// the tab was the only fix (Alex, 2026-11). So getDoc gets a time limit, and after that the
+// chunk is fetched with the REST API instead, which opens a fresh request every time.
+let sdkStaleUntil = 0; // after an SDK read times out, use REST only until then
+
+async function readChunk(id, n) {
+  // A video linked from two pages is stored once; the second listing points at it (chunksFrom).
+  const name = String(n).padStart(5, "0");
+  if (Date.now() >= sdkStaleUntil) {
+    try {
+      const snap = await withTimeout(getDoc(doc(db, "videos", id, "chunks", name)), CHUNK_TIMEOUT);
+      if (!snap.exists()) throw new Error(`Part ${n} of this video is missing.`);
+      return snap.data().d.toUint8Array();
+    } catch (e) {
+      if (String(e?.message).endsWith("is missing.")) throw e;
+      console.warn(`chunk ${n}: Firestore SDK failed (${e?.message}), using REST`);
+      sdkStaleUntil = Date.now() + 60000;
+    }
+  }
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await withTimeout(readChunkRest(id, name), CHUNK_TIMEOUT * 2);
+    } catch (e) {
+      if (attempt >= 2 || String(e?.message).endsWith("is missing.")) throw e;
+      await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+    }
+  }
+}
+
+async function readChunkRest(id, name) {
+  const token = await me.getIdToken();
+  const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents/videos/${encodeURIComponent(id)}/chunks/${name}?mask.fieldPaths=d`;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
+  if (res.status === 404) throw new Error(`Part ${Number(name)} of this video is missing.`);
+  if (!res.ok) throw new Error(`Couldn't load the video (HTTP ${res.status}).`);
+  const b64 = (await res.json()).fields.d.bytesValue;
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+function withTimeout(promise, ms) {
+  let t;
+  const timeout = new Promise((_, reject) => { t = setTimeout(() => reject(new Error("timed out")), ms); });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(t));
+}
+
+function startStreamer(v, read, title, first) {
   streamer = new Streamer(video, v, read, {
     onError: (e) => { console.error(e); playerError(e.message || String(e)); $("spinner").hidden = true; },
     onWaiting: (w) => { if (w && video.paused) return; $("spinner").hidden = !w; },
   });
   const p = Progress.get(v.id);
   const resume = p.done || p.pos > v.duration - DONE_WITHIN ? 0 : p.pos;
-  streamer.ready.then(() => {
-    if (current !== v) return;
+  const s = streamer;
+  let started = false;
+  s.ready.then(() => {
+    started = true;
+    if (current !== v || streamer !== s) return;
     if (resume > 1) video.currentTime = resume;
     $("spinner").hidden = true;
     updateSeek();
-  }).catch((e) => { playerError(e.message || String(e)); $("spinner").hidden = true; });
+  }).catch((e) => {
+    started = true;
+    if (streamer !== s) return;
+    playerError(e.message || String(e));
+    $("spinner").hidden = true;
+  });
+  // If the start still hasn't finished (e.g. the media source never opened), build the
+  // streamer again once rather than spinning forever.
+  setTimeout(() => {
+    if (started || current !== v || streamer !== s) return;
+    console.warn("video start stalled; restarting the stream");
+    s.destroy();
+    if (first) startStreamer(v, read, title, false);
+    else { playerError("The video didn't load. Go back and open it again, or reload the page."); $("spinner").hidden = true; }
+  }, START_TIMEOUT);
   video.playbackRate = Number(localStorage.getItem(KEY + "speed")) || 1;
   $("speed").textContent = `${video.playbackRate}×`;
+  if (!first) { video.play().catch(() => {}); return; }
   setupMediaSession(v, title);
   // Start playing straight away. When this runs inside the tap on a row (the row's click calls
   // route() directly), the browser counts it as a user gesture, so sound is allowed even on
